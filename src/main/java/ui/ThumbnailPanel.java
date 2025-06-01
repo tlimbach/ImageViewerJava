@@ -90,13 +90,36 @@ public class ThumbnailPanel extends JPanel {
         return srcImg.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
     }
 
+    private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
+
     private File extractVideoThumbnail(File videoFile) {
         try {
-            File thumb = File.createTempFile("thumb_", ".png");
-            String[] cmd = {"ffmpeg", "-y", "-i", videoFile.getAbsolutePath(), "-ss", "00:00:10.000", "-vframes", "1", thumb.getAbsolutePath()};
+
+            if (!THUMBNAIL_CACHE_DIR.exists()) {
+                THUMBNAIL_CACHE_DIR.mkdirs();
+            }
+
+            String hash = Integer.toHexString(videoFile.getAbsolutePath().hashCode());
+            File cachedThumbnail = new File(THUMBNAIL_CACHE_DIR, hash + ".png");
+
+            if (cachedThumbnail.exists()) {
+                return cachedThumbnail; // 👍 bereits da – direkt zurückgeben
+            }
+
+            // Falls nicht vorhanden: erzeugen
+            String[] cmd = {
+                    "ffmpeg", "-y",
+                    "-i", videoFile.getAbsolutePath(),
+                    "-ss", "00:00:10.000",
+                    "-vframes", "1",
+                    cachedThumbnail.getAbsolutePath()
+            };
+
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.inheritIO().start().waitFor();
-            return thumb;
+
+            return cachedThumbnail.exists() ? cachedThumbnail : null;
+
         } catch (Exception e) {
             e.printStackTrace();
             return null;
