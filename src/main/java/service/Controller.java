@@ -24,6 +24,8 @@ public class Controller {
         return controller;
     }
 
+
+
     public void handleDirectory(Path directory) {
 
         storeDirectoryToSesingsJson(directory);
@@ -43,7 +45,7 @@ public class Controller {
         // Nur Bilddateien sammeln
         List<File> imageFiles = new ArrayList<>();
         for (File file : files) {
-            if (isImageFile(file)) {
+            if (isImageFile(file) || isVideoFile(file)) {
                 imageFiles.add(file);
             }
         }
@@ -77,11 +79,16 @@ public class Controller {
         }
     }
 
-    private boolean isImageFile(File file) {
+    public static boolean isImageFile(File file) {
         String name = file.getName().toLowerCase();
         return name.endsWith(".jpg") || name.endsWith(".jpeg") ||
                 name.endsWith(".png") || name.endsWith(".gif") ||
                 name.endsWith(".bmp") || name.endsWith(".webp");
+    }
+
+    public static boolean isVideoFile(File file) {
+        String name = file.getName().toLowerCase();
+        return name.endsWith(".mp4");
     }
 
     public void setControlPanel(ControlPanel controlPanel) {
@@ -97,5 +104,9 @@ public class Controller {
     public void setMediaPanel(MediaView mediaView) {
 
         this.mediaView = mediaView;
+    }
+
+    public void handleMedia(File file) {
+        mediaView.display(file);
     }
 }

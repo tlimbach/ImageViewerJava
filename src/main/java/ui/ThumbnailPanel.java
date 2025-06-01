@@ -1,7 +1,11 @@
 package ui;
 
+import service.Controller;
+
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.util.List;
 
@@ -28,10 +32,32 @@ public class ThumbnailPanel extends JPanel {
 
         for (File file : mediaFiles) {
             try {
+                if (Controller.isImageFile(file)) {
                 ImageIcon icon = new ImageIcon(file.getAbsolutePath());
                 Image scaled = getScaledImagePreserveRatio(icon.getImage(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
                 JLabel label = new JLabel(new ImageIcon(scaled));
-                gridPanel.add(label);
+                label.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mouseClicked(MouseEvent e) {
+                        Controller.getInstance().handleMedia(file);
+                    }
+                });
+                gridPanel.add(label);}
+                if (Controller.isVideoFile(file)) {
+                    File thumbnail = extractVideoThumbnail(file);
+                    if (thumbnail != null && thumbnail.exists()) {
+                        ImageIcon icon = new ImageIcon(thumbnail.getAbsolutePath());
+                        Image scaled = getScaledImagePreserveRatio(icon.getImage(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+                        JLabel label = new JLabel(new ImageIcon(scaled));
+                        label.addMouseListener(new MouseAdapter() {
+                            @Override
+                            public void mouseClicked(MouseEvent e) {
+                                Controller.getInstance().handleMedia(file);
+                            }
+                        });
+                        gridPanel.add(label);
+                    }
+                }
             } catch (Exception e) {
                 e.printStackTrace();
             }
@@ -55,5 +81,24 @@ public class ThumbnailPanel extends JPanel {
         int newHeight = (int) (srcHeight * scale);
 
         return srcImg.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
+    }
+
+    private File extractVideoThumbnail(File videoFile) {
+        try {
+            File thumb = File.createTempFile("thumb_", ".png");
+            String[] cmd = {
+                    "ffmpeg", "-y",
+                    "-i", videoFile.getAbsolutePath(),
+                    "-ss", "00:00:10.000",
+                    "-vframes", "1",
+                    thumb.getAbsolutePath()
+            };
+            ProcessBuilder pb = new ProcessBuilder(cmd);
+            pb.inheritIO().start().waitFor();
+            return thumb;
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
     }
 }

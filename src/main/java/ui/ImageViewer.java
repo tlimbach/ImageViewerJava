@@ -20,6 +20,7 @@ public class ImageViewer {
         JFrame frame = new JFrame();
         controlPanel = new ControlPanel();
         thumbnailPanel = new ThumbnailPanel();
+        mediaView = MediaView.getInstance();
 
         controller.setControlPanel(controlPanel);
         controller.setThumbnailPanel(thumbnailPanel);
