@@ -13,12 +13,17 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Controller {
     private static Controller controller = new Controller();
     private ControlPanel controlPanel;
     private ThumbnailPanel thumbnailPanel;
     private MediaView mediaView;
+
+    private final ExecutorService executor = Executors.newFixedThreadPool(4);
 
     public static Controller getInstance() {
         return controller;
@@ -125,5 +130,13 @@ public class Controller {
 
     public void setPlayPos(float playPosInPercentage) {
         mediaView.setPlayPos(playPosInPercentage);
+    }
+
+    public Executor getExecutor() {
+        return executor;
+    }
+
+    public void setThumbnailsLoaded(int thumbnailsLoadedCount, int totalThumbnails) {
+        controlPanel.setThumbnailsLoaded( thumbnailsLoadedCount,  totalThumbnails);
     }
 }

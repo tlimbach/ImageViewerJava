@@ -13,6 +13,8 @@ public class ControlPanel extends JPanel {
     private  JLabel lblPosition;
     private Controller controller = Controller.getInstance();
 
+    private JLabel lblThumbnailsLoadedCount;
+
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
@@ -79,7 +81,8 @@ public class ControlPanel extends JPanel {
         JButton btnSetTags = new JButton("Tags setzen");
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
 
-
+        lblThumbnailsLoadedCount = new JLabel("---------");
+        add(lblThumbnailsLoadedCount);
     }
 
 
@@ -98,5 +101,9 @@ public class ControlPanel extends JPanel {
             lblPosition.setText(elapsed);
         });
 
+    }
+
+    public void setThumbnailsLoaded(int thumbnailsLoadedCount, int totalThumbnails) {
+        SwingUtilities.invokeLater(()->lblThumbnailsLoadedCount.setText("Thumbnails geladen: " + thumbnailsLoadedCount + " / " + totalThumbnails));
     }
 }
