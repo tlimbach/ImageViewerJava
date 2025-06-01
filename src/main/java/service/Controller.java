@@ -23,7 +23,7 @@ public class Controller {
     private ThumbnailPanel thumbnailPanel;
     private MediaView mediaView;
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(4);
+    private final ExecutorService executor = Executors.newFixedThreadPool(2);
 
     public static Controller getInstance() {
         return controller;
