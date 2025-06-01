@@ -10,6 +10,7 @@ import java.io.File;
 public class MediaView {
 
     private static final MediaView instance = new MediaView();
+
     public static MediaView getInstance() {
         return instance;
     }
@@ -40,14 +41,23 @@ public class MediaView {
         stackPanel.add(mediaPlayerComponent.videoSurfaceComponent(), "video");
 
         frame.add(stackPanel, BorderLayout.CENTER);
+
+        startPositionUpdateTimer();
+    }
+
+    private void startPositionUpdateTimer() {
+        Timer timer = new Timer(500, e -> {
+            long millis = mediaPlayerComponent.mediaPlayer().status().time();
+            long total = mediaPlayerComponent.mediaPlayer().status().length();
+            Controller.getInstance().showCurrentPlayPosMillis(millis, total);
+        });
+        timer.start();
     }
 
     public void display(File file) {
         if (file == null || !file.exists()) return;
 
-        SwingUtilities.invokeLater(() -> {
-            mediaPlayerComponent.mediaPlayer().controls().stop();
-        });
+        stop();
 
         frame.setVisible(true);
 
@@ -68,11 +78,41 @@ public class MediaView {
 
         }
 
-        if (Controller.isVideoFile(file)){
+        if (Controller.isVideoFile(file)) {
             cardLayout.show(stackPanel, "video");
             SwingUtilities.invokeLater(() -> {
                 mediaPlayerComponent.mediaPlayer().media().play(file.getAbsolutePath());
             });
         }
+    }
+
+    public void play() {
+        SwingUtilities.invokeLater(() -> {
+            mediaPlayerComponent.mediaPlayer().controls().play();
+        });
+    }
+
+    public void stop() {
+        SwingUtilities.invokeLater(() -> {
+            mediaPlayerComponent.mediaPlayer().controls().stop();
+        });
+    }
+
+    public void pause() {
+        SwingUtilities.invokeLater(() -> {
+            mediaPlayerComponent.mediaPlayer().controls().pause();
+        });
+    }
+
+    public void fullscreen(boolean fullscreen) {
+        SwingUtilities.invokeLater(() -> {
+            mediaPlayerComponent.mediaPlayer().fullScreen();
+        });
+    }
+
+    public void setPlayPos(float playPosInPercentage) {
+        SwingUtilities.invokeLater(() -> {
+            mediaPlayerComponent.mediaPlayer().controls().setPosition(playPosInPercentage);
+        });
     }
 }

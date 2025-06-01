@@ -92,21 +92,38 @@ public class Controller {
     }
 
     public void setControlPanel(ControlPanel controlPanel) {
-
         this.controlPanel = controlPanel;
     }
 
     public void setThumbnailPanel(ThumbnailPanel thumbnailPanel) {
-
         this.thumbnailPanel = thumbnailPanel;
     }
 
     public void setMediaPanel(MediaView mediaView) {
-
         this.mediaView = mediaView;
     }
 
     public void handleMedia(File file) {
         mediaView.display(file);
+    }
+
+    public void playPause(boolean selected) {
+        if (selected) {
+            mediaView.play();
+        } else {
+            mediaView.pause();
+        }
+    }
+
+    public void setFullscreen(boolean fullscreen) {
+        mediaView.fullscreen(fullscreen);
+    }
+
+    public void showCurrentPlayPosMillis(long millis, long total) {
+        controlPanel.setCurrentPlayPosMillis(millis, total);
+    }
+
+    public void setPlayPos(float playPosInPercentage) {
+        mediaView.setPlayPos(playPosInPercentage);
     }
 }

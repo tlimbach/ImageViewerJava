@@ -14,12 +14,12 @@ public class ThumbnailPanel extends JPanel {
     private final JPanel gridPanel;
     private final JScrollPane scrollPane;
 
-    private final static int THUMBNAIL_SIZE = 240;
+    private final static int THUMBNAIL_SIZE = 400;
 
     public ThumbnailPanel() {
         setLayout(new BorderLayout());
 
-        gridPanel = new JPanel(new GridLayout(0, 4, 10, 10)); // 4 Spalten, variable Zeilen, Lücken: 10px
+        gridPanel = new JPanel(new GridLayout(0, 3, 5, 5)); // 4 Spalten, variable Zeilen, Lücken: 10px
         scrollPane = new JScrollPane(gridPanel);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
 
