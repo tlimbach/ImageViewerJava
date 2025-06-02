@@ -141,7 +141,7 @@ public class Controller {
     }
 
     public static void printMemoryUsage() {
-        System.gc();
+//        System.gc();
         Runtime runtime = Runtime.getRuntime();
 
         long maxMemory = runtime.maxMemory();       // Maximal möglicher Speicher (vom JVM-Flag -Xmx abhängig)

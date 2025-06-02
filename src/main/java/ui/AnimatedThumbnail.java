@@ -24,7 +24,7 @@ class AnimatedThumbnail {
 
     public void start() {
 
-        if (type == MEDIA_TYPE.IMAGE){
+        if (type == MEDIA_TYPE.IMAGE) {
             return;
         }
 
@@ -57,13 +57,16 @@ class AnimatedThumbnail {
         }
 
         if (cachedIcons != null) {
-            // explizit leeren, um intern genutzte Ressourcen freizugeben
+            for (ImageIcon icon : cachedIcons) {
+                if (icon != null) {
+                    icon.getImage().flush();
+                }
+            }
             cachedIcons.clear();
             cachedIcons = null;
         }
 
         isRunning = false;
-
 
 
     }
