@@ -2,9 +2,12 @@ package ui;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
 class AnimatedThumbnail {
     JLabel label;
@@ -19,31 +22,46 @@ class AnimatedThumbnail {
     private List<ImageIcon> cachedIcons = null;
 
     public void start() {
-
-        if (type == MEDIA_TYPE.IMAGE) {
-            return;
-        }
-
-        System.out.println("starting animation for " + filename);
+        if (type == MEDIA_TYPE.IMAGE) return;
         if (isRunning || imageFiles == null || imageFiles.isEmpty()) return;
 
-        // Icons nur einmal laden
-        cachedIcons = new ArrayList<>();
-        for (File file : imageFiles) {
-            if (file == null) continue;
-            Image image = Toolkit.getDefaultToolkit().getImage(file.getAbsolutePath());
-            cachedIcons.add(new ImageIcon(image));
-        }
+        System.out.println("starting animation for " + filename);
 
-
-        animationTimer = new Timer(ThumbnailPanel.ANIMATION_DELAY_PLAYBACK, e -> {
-            label.setIcon(cachedIcons.get(currentIndex % cachedIcons.size()));
-            currentIndex++;
-        });
-
-        animationTimer.setRepeats(true);
-        animationTimer.start();
         isRunning = true;
+
+        // Lade Bilder asynchron
+        CompletableFuture.supplyAsync(() -> {
+            List<ImageIcon> icons = new ArrayList<>();
+            for (File file : imageFiles) {
+                if (file == null) continue;
+                try {
+                    BufferedImage img = javax.imageio.ImageIO.read(file);
+                    if (img != null) {
+                        icons.add(new ImageIcon(img));
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+            return icons;
+        }).thenAccept(icons -> {
+            SwingUtilities.invokeLater(() -> {
+                if (!isRunning || icons.isEmpty()) return;
+
+                cachedIcons = icons;
+                currentIndex = 0;
+
+                animationTimer = new Timer(ThumbnailPanel.ANIMATION_DELAY_PLAYBACK, e -> {
+                    if (cachedIcons != null && !cachedIcons.isEmpty()) {
+                        label.setIcon(cachedIcons.get(currentIndex % cachedIcons.size()));
+                        currentIndex++;
+                    }
+                });
+
+                animationTimer.setRepeats(true);
+                animationTimer.start();
+            });
+        });
     }
 
     public void stop() {
@@ -56,7 +74,7 @@ class AnimatedThumbnail {
 
         if (cachedIcons != null) {
             for (ImageIcon icon : cachedIcons) {
-                if (icon != null) {
+                if (icon != null && icon.getImage() != null) {
                     icon.getImage().flush();
                 }
             }
@@ -65,7 +83,5 @@ class AnimatedThumbnail {
         }
 
         isRunning = false;
-
-
     }
 }

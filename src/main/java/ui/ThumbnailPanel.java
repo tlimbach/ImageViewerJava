@@ -3,6 +3,7 @@ package ui;
 import service.Controller;
 import service.H;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -17,37 +18,25 @@ import java.util.concurrent.CompletableFuture;
 
 public class ThumbnailPanel extends JPanel {
 
-    private final static int THUMBNAIL_SIZE = 470;
+    private final static int THUMBNAIL_WIDTH = 470;
+    private final static int THUMBNAIL_HEIGHT = (int) (THUMBNAIL_WIDTH * 9.0 / 16);  // ≈ 265
+    private final static int PREVIEW_IMAGE_WIDTH = THUMBNAIL_WIDTH;
+    private final static int PREVIEW_IMAGE_HEIGHT = THUMBNAIL_HEIGHT;
 
-    private final static int PREVIEW_IMAGE_SIZE = THUMBNAIL_SIZE;
-
-    /**
-     * Anzahl Bilder pro Thumbnail für die Animation
-     */
     private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 140;
-
-
-    /**
-     * Delay in ms zwischen zwei angezeigten Bildern beim Playback der Animation
-     */
-    public final static int ANIMATION_DELAY_PLAYBACK = (int) (33*2.5);
-
-
-    /**
-     * Delay in ms beim Laden der Bilder der Animation
-     */
+    public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
-
 
     private final JPanel gridPanel;
     private final JScrollPane scrollPane;
     private boolean thumbnailLoadingCompleted = false;
 
     private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
+
     public ThumbnailPanel() {
         setLayout(new BorderLayout());
 
-        gridPanel = new JPanel(new GridLayout(0, 3, 5, 5)); // 4 Spalten, variable Zeilen, Lücken: 10px
+        gridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
         scrollPane = new JScrollPane(gridPanel);
         scrollPane.getVerticalScrollBar().setUnitIncrement(8);
         scrollPane.getViewport().addChangeListener(e -> updateVisibleThumbnails());
@@ -70,9 +59,7 @@ public class ThumbnailPanel extends JPanel {
     }
 
     List<AnimatedThumbnail> animatedThumbnails = new ArrayList<>();
-
     int thumbnailsLoadedCount = 0;
-
     int totalFramesLoaded = 0;
     int framesFromCache = 0;
 
@@ -82,49 +69,30 @@ public class ThumbnailPanel extends JPanel {
 
         for (File file : mediaFiles) {
             if (Controller.isImageFile(file)) {
-                // Bilder sofort synchron laden (geht schnell)
-//                ImageIcon icon = new ImageIcon(file.getAbsolutePath());
-//                Image scaled = getScaledImagePreserveRatio(icon.getImage(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
                 addThumbnailLabel(MEDIA_TYPE.IMAGE, Collections.singletonList(file), file);
                 thumbnailsLoadedCount++;
                 Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
             } else if (Controller.isVideoFile(file)) {
-                // Videos asynchron laden
-                CompletableFuture.supplyAsync(() -> loadThumbnails(file, 1000, ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutor()).thenAccept(thumbFiles -> {
-                    thumbnailsLoadedCount++;
-                    if (thumbFiles != null && thumbFiles.size() > 0) {
-//                        List<ImageIcon> animationFiles = new ArrayList<>();
-//                        thumbFiles.forEach(f -> {
-//                            Image image = Toolkit.getDefaultToolkit().getImage(f.getAbsolutePath());
-//                            Image scaled = getScaledImagePreserveRatio(image, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
-//                            animationFiles.add(new ImageIcon(scaled));
-//                        });
-
-                        SwingUtilities.invokeLater(() -> {
-                            addThumbnailLabel(MEDIA_TYPE.VIDEO, thumbFiles, file);
+                CompletableFuture
+                        .supplyAsync(() -> loadThumbnails(file, 1000, ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutor())
+                        .thenAccept(thumbFiles -> {
+                            thumbnailsLoadedCount++;
+                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                                SwingUtilities.invokeLater(() -> addThumbnailLabel(MEDIA_TYPE.VIDEO, thumbFiles, file));
+                                Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
+                                thumbnailLoadingCompleted = true;
+                                H.out("total frames " + totalFramesLoaded + " from cache " + framesFromCache);
+                            }
                         });
-                        Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
-
-                        thumbnailLoadingCompleted = true;
-
-                        H.out("total frames " + totalFramesLoaded + " from cache " + framesFromCache);
-
-                    }
-                });
             }
         }
-
-        //  gridPanel.revalidate();
-        //  gridPanel.repaint();
     }
-
-
 
     private void addThumbnailLabel(MEDIA_TYPE type, List<File> thumbnailFiles, File file) {
         JLabel label = new JLabel();
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.setVerticalAlignment(SwingConstants.CENTER);
-        label.setPreferredSize(new Dimension(THUMBNAIL_SIZE, THUMBNAIL_SIZE));
+        label.setPreferredSize(new Dimension(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
         label.setOpaque(true);
         label.setBackground(Color.DARK_GRAY);
 
@@ -139,13 +107,13 @@ public class ThumbnailPanel extends JPanel {
 
         if (type == MEDIA_TYPE.IMAGE) {
             try {
-                BufferedImage original = javax.imageio.ImageIO.read(file);
-                Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+                BufferedImage original = ImageIO.read(file);
+                Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
                 label.setIcon(new ImageIcon(scaled));
             } catch (IOException e) {
                 e.printStackTrace();
             }
-        }else {
+        } else {
             Image image = Toolkit.getDefaultToolkit().getImage(thumbnailFiles.get(0).getAbsolutePath());
             label.setIcon(new ImageIcon(image));
         }
@@ -154,11 +122,10 @@ public class ThumbnailPanel extends JPanel {
         aNail.imageFiles = thumbnailFiles;
         aNail.animationTimer = null;
         aNail.label = label;
-        aNail.isRunning=false;
-        aNail.type=type;
+        aNail.isRunning = false;
+        aNail.type = type;
         aNail.filename = file.getName();
         animatedThumbnails.add(aNail);
-
     }
 
     private Image getScaledImagePreserveRatio(Image srcImg, int maxWidth, int maxHeight) {
@@ -174,11 +141,15 @@ public class ThumbnailPanel extends JPanel {
         int newWidth = (int) (srcWidth * scale);
         int newHeight = (int) (srcHeight * scale);
 
-        return srcImg.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
+        BufferedImage result = new BufferedImage(maxWidth, maxHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D g = result.createGraphics();
+        g.setColor(Color.DARK_GRAY);
+        g.fillRect(0, 0, maxWidth, maxHeight);
+        g.drawImage(srcImg, (maxWidth - newWidth) / 2, (maxHeight - newHeight) / 2, newWidth, newHeight, null);
+        g.dispose();
+
+        return result;
     }
-
-
-
 
     private List<File> loadThumbnails(File videoFile, int startMillis, int count) {
         int millis = startMillis;
@@ -205,20 +176,18 @@ public class ThumbnailPanel extends JPanel {
 
         file = extractVideoThumbnail(videoFile, milli);
         return file;
-
     }
 
     private File extractVideoThumbnail(File videoFile, int milli) {
         try {
             String nameInCache = milli + "_" + videoFile.getName() + ".jpg";
             File file = new File(THUMBNAIL_CACHE_DIR, nameInCache);
-            // Millisekunden in hh:mm:ss.SSS umwandeln
+
             int totalSeconds = milli / 1000;
             int hours = totalSeconds / 3600;
             int minutes = (totalSeconds % 3600) / 60;
             int seconds = totalSeconds % 60;
             int ms = milli % 1000;
-
             String timestamp = String.format("%02d:%02d:%02d.%03d", hours, minutes, seconds, ms);
 
             String[] cmd = {
@@ -227,7 +196,7 @@ public class ThumbnailPanel extends JPanel {
                     "-ss", timestamp,
                     "-i", videoFile.getAbsolutePath(),
                     "-vframes", "1",
-                    "-vf", "scale='"+PREVIEW_IMAGE_SIZE+":trunc(ih*"+PREVIEW_IMAGE_SIZE+"/iw/2)*2'",
+                    "-vf", "scale='min(" + PREVIEW_IMAGE_WIDTH + "\\,iw)':min(" + PREVIEW_IMAGE_HEIGHT + "\\,ih):force_original_aspect_ratio=decrease,pad=" + PREVIEW_IMAGE_WIDTH + ":" + PREVIEW_IMAGE_HEIGHT +":(ow-iw)/2:(oh-ih)/2",
                     file.getAbsolutePath()
             };
 
