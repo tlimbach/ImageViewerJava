@@ -50,11 +50,21 @@ class AnimatedThumbnail {
 
     public void stop() {
         System.out.println("Stopping animation for " + filename);
+
         if (animationTimer != null) {
             animationTimer.stop();
             animationTimer = null;
         }
+
+        if (cachedIcons != null) {
+            // explizit leeren, um intern genutzte Ressourcen freizugeben
+            cachedIcons.clear();
+            cachedIcons = null;
+        }
+
         isRunning = false;
-        cachedIcons = null; // Speicher wieder freigeben
+
+
+
     }
 }
