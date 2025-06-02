@@ -15,6 +15,10 @@ class AnimatedThumbnail {
 
     String filename;
 
+    boolean reversed = true; // CHatGPT: wenn die Animationsbilder alle durch sind, nicht wieder vorne anfangen, sondern die Bilder in umgeklehrter Reihe wiedergeben.
+
+    private int direction = 1; // 1 = vorwärts, -1 = rückwärts
+
     private int currentIndex = 0;
     private List<ImageIcon> cachedIcons = null;
 

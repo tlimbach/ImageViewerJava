@@ -19,22 +19,24 @@ public class ThumbnailPanel extends JPanel {
 
     private final static int THUMBNAIL_SIZE = 470;
 
+    private final static int PREVIEW_IMAGE_SIZE = THUMBNAIL_SIZE;
+
     /**
      * Anzahl Bilder pro Thumbnail für die Animation
      */
-    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 35;
+    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 40;
 
 
     /**
      * Delay in ms zwischen zwei angezeigten Bildern beim Playback der Animation
      */
-    public final static int ANIMATION_DELAY_PLAYBACK = 130;
+    public final static int ANIMATION_DELAY_PLAYBACK = 80;
 
 
     /**
      * Delay in ms beim Laden der Bilder der Animation
      */
-    private final static int ANIMATION_DELAY_RECORD = 80;
+    private final static int ANIMATION_DELAY_RECORD = 35;
 
 
     private final JPanel gridPanel;
@@ -225,7 +227,7 @@ public class ThumbnailPanel extends JPanel {
                     "-ss", timestamp,
                     "-i", videoFile.getAbsolutePath(),
                     "-vframes", "1",
-                    "-vf", "scale='400:trunc(ih*400/iw/2)*2'",
+                    "-vf", "scale='"+PREVIEW_IMAGE_SIZE+":trunc(ih*"+PREVIEW_IMAGE_SIZE+"/iw/2)*2'",
                     file.getAbsolutePath()
             };
 
