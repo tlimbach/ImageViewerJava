@@ -24,19 +24,19 @@ public class ThumbnailPanel extends JPanel {
     /**
      * Anzahl Bilder pro Thumbnail für die Animation
      */
-    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 40;
+    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 140;
 
 
     /**
      * Delay in ms zwischen zwei angezeigten Bildern beim Playback der Animation
      */
-    public final static int ANIMATION_DELAY_PLAYBACK = 80;
+    public final static int ANIMATION_DELAY_PLAYBACK = (int) (33*2.5);
 
 
     /**
      * Delay in ms beim Laden der Bilder der Animation
      */
-    private final static int ANIMATION_DELAY_RECORD = 35;
+    private final static int ANIMATION_DELAY_RECORD = 33;
 
 
     private final JPanel gridPanel;
@@ -59,7 +59,7 @@ public class ThumbnailPanel extends JPanel {
 
     void updateVisibleThumbnails() {
         Rectangle view = scrollPane.getViewport().getViewRect();
-        for (AnimatedThumbnail thumb : animatedThumbnails) {
+        for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
             boolean visible = view.intersects(thumb.label.getBounds());
             if (visible && !thumb.isRunning) {
                 thumb.start();
