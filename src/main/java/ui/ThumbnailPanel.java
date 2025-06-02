@@ -75,9 +75,9 @@ public class ThumbnailPanel extends JPanel {
                     if (thumbFiles != null && thumbFiles.size()>0)
                     {
                         List<ImageIcon> animationImages = new ArrayList<>();
-                        thumbFiles.forEach(f-> {
-                            ImageIcon icon = new ImageIcon(f.getAbsolutePath());
-                            Image scaled = getScaledImagePreserveRatio(icon.getImage(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+                        thumbFiles.forEach(f -> {
+                            Image image = Toolkit.getDefaultToolkit().getImage(f.getAbsolutePath());
+                            Image scaled = getScaledImagePreserveRatio(image, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
                             animationImages.add(new ImageIcon(scaled));
                         });
 
