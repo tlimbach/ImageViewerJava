@@ -15,7 +15,7 @@ import java.util.concurrent.CompletableFuture;
 
 public class ThumbnailPanel extends JPanel {
 
-    private final static int THUMBNAIL_SIZE = 400;
+    private final static int THUMBNAIL_SIZE = 470;
 
     /**
      * Anzahl Bilder pro Thumbnail für die Animation
@@ -45,6 +45,7 @@ public class ThumbnailPanel extends JPanel {
 
         gridPanel = new JPanel(new GridLayout(0, 3, 5, 5)); // 4 Spalten, variable Zeilen, Lücken: 10px
         scrollPane = new JScrollPane(gridPanel);
+        scrollPane.getVerticalScrollBar().setUnitIncrement(16);
         scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
 
         add(scrollPane, BorderLayout.CENTER);
@@ -69,7 +70,7 @@ public class ThumbnailPanel extends JPanel {
                 Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
             } else if (Controller.isVideoFile(file)) {
                 // Videos asynchron laden
-                CompletableFuture.supplyAsync(() -> loadThumbnails(file, 30000, ANIMATION_FRAMES_PER_THUMBNAIL  ), Controller.getInstance().getExecutor()).thenAccept(thumbFiles -> {
+                CompletableFuture.supplyAsync(() -> loadThumbnails(file, 1000, ANIMATION_FRAMES_PER_THUMBNAIL  ), Controller.getInstance().getExecutor()).thenAccept(thumbFiles -> {
                     thumbnailsLoadedCount++;
                     if (thumbFiles != null && thumbFiles.size()>0)
                     {
@@ -85,9 +86,10 @@ public class ThumbnailPanel extends JPanel {
                         });
                         Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
 
-                        thumbnailLoadingCompleted = thumbnailsLoadedCount == mediaFiles.size();
+                        thumbnailLoadingCompleted = true;
 
                         H.out("total frames " + totalFramesLoaded + " from cache " + framesFromCache);
+                        Controller.printMemoryUsage();
                     }
                 });
             }
@@ -151,26 +153,34 @@ public class ThumbnailPanel extends JPanel {
         int millis = startMillis;
         List<File> files = new ArrayList<>();
         for (int t=0; t<count; t++) {
-            files.add(extractVideoThumbnail(videoFile, millis));
+            files.add(fetchVideoThumbnail(videoFile, millis));
             millis+= ANIMATION_DELAY_RECORD;
         }
         return files;
     }
 
+    private File fetchVideoThumbnail(File videoFile, int milli)
+    {
+        if (!THUMBNAIL_CACHE_DIR.exists()) {
+            THUMBNAIL_CACHE_DIR.mkdirs();
+        }
+
+        String nameInCache = milli+ "_" +videoFile.getName()+".jpg";
+        totalFramesLoaded++;
+        File file = new File(THUMBNAIL_CACHE_DIR, nameInCache);
+        if (file.exists()) {
+            framesFromCache++;
+            return file;
+        }
+
+        file = extractVideoThumbnail(videoFile, milli);
+        return file;
+
+    }
     private File extractVideoThumbnail(File videoFile, int milli) {
         try {
-            if (!THUMBNAIL_CACHE_DIR.exists()) {
-                THUMBNAIL_CACHE_DIR.mkdirs();
-            }
-
-            String hash = Integer.toHexString(videoFile.getAbsolutePath().hashCode());
-            File cachedThumbnail = new File(THUMBNAIL_CACHE_DIR, hash + "_" + milli + "_.png");
-totalFramesLoaded++;
-            if (cachedThumbnail.exists()) {
-                framesFromCache++;
-                return cachedThumbnail;
-            }
-
+            String nameInCache = milli +"_" +videoFile.getName()+".jpg";
+            File file = new File(THUMBNAIL_CACHE_DIR, nameInCache);
             // Millisekunden in hh:mm:ss.SSS umwandeln
             int totalSeconds = milli / 1000;
             int hours = totalSeconds / 3600;
@@ -182,16 +192,18 @@ totalFramesLoaded++;
 
             String[] cmd = {
                     "ffmpeg", "-y",
+                    "-loglevel", "error",
                     "-ss", timestamp,
                     "-i", videoFile.getAbsolutePath(),
                     "-vframes", "1",
-                    cachedThumbnail.getAbsolutePath()
+                    "-vf", "scale='400:trunc(ih*400/iw/2)*2'",
+                    file.getAbsolutePath()
             };
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.inheritIO().start().waitFor();
 
-            return cachedThumbnail.exists() ? cachedThumbnail : null;
+            return file.exists() ? file : null;
 
         } catch (Exception e) {
             e.printStackTrace();

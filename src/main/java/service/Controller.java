@@ -23,7 +23,7 @@ public class Controller {
     private ThumbnailPanel thumbnailPanel;
     private MediaView mediaView;
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(2);
+    private final ExecutorService executor = Executors.newFixedThreadPool(6);
 
     public static Controller getInstance() {
         return controller;
@@ -138,5 +138,21 @@ public class Controller {
 
     public void setThumbnailsLoaded(int thumbnailsLoadedCount, int totalThumbnails) {
         controlPanel.setThumbnailsLoaded( thumbnailsLoadedCount,  totalThumbnails);
+    }
+
+    public static void printMemoryUsage() {
+        Runtime runtime = Runtime.getRuntime();
+
+        long maxMemory = runtime.maxMemory();       // Maximal möglicher Speicher (vom JVM-Flag -Xmx abhängig)
+        long allocatedMemory = runtime.totalMemory(); // Aktuell zugewiesener Speicher
+        long freeMemory = runtime.freeMemory();       // Freier Speicher innerhalb des zugewiesenen Speichers
+        long usedMemory = allocatedMemory - freeMemory;
+
+        System.out.println("========== Speicherstatus ==========");
+        System.out.printf("Max Memory     : %.2f MB%n", maxMemory / (1024.0 * 1024));
+        System.out.printf("Allocated      : %.2f MB%n", allocatedMemory / (1024.0 * 1024));
+        System.out.printf("Used           : %.2f MB%n", usedMemory / (1024.0 * 1024));
+        System.out.printf("Free (in alloc): %.2f MB%n", freeMemory / (1024.0 * 1024));
+        System.out.println("====================================");
     }
 }
