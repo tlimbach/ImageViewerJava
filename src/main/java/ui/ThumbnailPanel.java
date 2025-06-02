@@ -7,7 +7,9 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -79,8 +81,8 @@ public class ThumbnailPanel extends JPanel {
         for (File file : mediaFiles) {
             if (Controller.isImageFile(file)) {
                 // Bilder sofort synchron laden (geht schnell)
-                ImageIcon icon = new ImageIcon(file.getAbsolutePath());
-                Image scaled = getScaledImagePreserveRatio(icon.getImage(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+//                ImageIcon icon = new ImageIcon(file.getAbsolutePath());
+//                Image scaled = getScaledImagePreserveRatio(icon.getImage(), THUMBNAIL_SIZE, THUMBNAIL_SIZE);
                 addThumbnailLabel(MEDIA_TYPE.IMAGE, Collections.singletonList(file), file);
                 thumbnailsLoadedCount++;
                 Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
@@ -132,8 +134,19 @@ public class ThumbnailPanel extends JPanel {
         });
 
         gridPanel.add(label);
-        Image image = Toolkit.getDefaultToolkit().getImage(thumbnailFiles.get(0).getAbsolutePath());
-        label.setIcon(new ImageIcon(image));
+
+        if (type == MEDIA_TYPE.IMAGE) {
+            try {
+                BufferedImage original = javax.imageio.ImageIO.read(file);
+                Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_SIZE, THUMBNAIL_SIZE);
+                label.setIcon(new ImageIcon(scaled));
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }else {
+            Image image = Toolkit.getDefaultToolkit().getImage(thumbnailFiles.get(0).getAbsolutePath());
+            label.setIcon(new ImageIcon(image));
+        }
 
         AnimatedThumbnail aNail = new AnimatedThumbnail();
         aNail.imageFiles = thumbnailFiles;

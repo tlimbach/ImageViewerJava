@@ -19,6 +19,11 @@ class AnimatedThumbnail {
     private List<ImageIcon> cachedIcons = null;
 
     public void start() {
+
+        if (type == MEDIA_TYPE.IMAGE){
+            return;
+        }
+
         System.out.println("starting animation for " + filename);
         if (isRunning || imageFiles == null || imageFiles.isEmpty()) return;
 
