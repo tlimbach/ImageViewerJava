@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.stream.Collectors;
 
 public class Controller {
     private static Controller controller = new Controller();
@@ -23,15 +24,19 @@ public class Controller {
     private ThumbnailPanel thumbnailPanel;
     private MediaView mediaView;
 
+    private List<File> mediaFiles;
+
     private final ExecutorService executor = Executors.newFixedThreadPool(4);
+    private Path currentDirectory;
 
     public static Controller getInstance() {
         return controller;
     }
 
 
-
     public void handleDirectory(Path directory) {
+
+        this.currentDirectory = directory;
 
         storeDirectoryToSesingsJson(directory);
 
@@ -47,15 +52,15 @@ public class Controller {
             return;
         }
 
-        // Nur Bilddateien sammeln
-        List<File> imageFiles = new ArrayList<>();
+
+        mediaFiles = new ArrayList<>();
         for (File file : files) {
             if (isImageFile(file) || isVideoFile(file)) {
-                imageFiles.add(file);
+                mediaFiles.add(file);
             }
         }
 
-        thumbnailPanel.populate(imageFiles);
+        thumbnailPanel.populate(mediaFiles);
     }
 
     public void storeDirectoryToSesingsJson(Path directory) {
@@ -137,7 +142,7 @@ public class Controller {
     }
 
     public void setThumbnailsLoaded(int thumbnailsLoadedCount, int totalThumbnails) {
-        controlPanel.setThumbnailsLoaded( thumbnailsLoadedCount,  totalThumbnails);
+        controlPanel.setThumbnailsLoaded(thumbnailsLoadedCount, totalThumbnails);
     }
 
     public static void printMemoryUsage() {
@@ -155,5 +160,30 @@ public class Controller {
         System.out.printf("Used           : %.2f MB%n", usedMemory / (1024.0 * 1024));
         System.out.printf("Free (in alloc): %.2f MB%n", freeMemory / (1024.0 * 1024));
         System.out.println("====================================");
+    }
+
+    public void tagsChanged() {
+        if (mediaFiles == null || mediaFiles.isEmpty())
+            return;
+
+
+    }
+
+    public void setSelectedFiles(List<String> filesForSelectedTags) {
+
+        if (filesForSelectedTags.isEmpty()) {
+            thumbnailPanel.populate(mediaFiles);
+        } else {
+            thumbnailPanel.populate(filesForSelectedTags.stream().map(File::new).collect(Collectors.toList()));
+        }
+    }
+
+    public Path getCurrentDirectory() {
+
+        if (currentDirectory == null){
+            currentDirectory = loadDefaultDirectoryFromSettingsJson();
+        }
+
+        return currentDirectory;
     }
 }

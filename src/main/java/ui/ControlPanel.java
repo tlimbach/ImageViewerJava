@@ -81,6 +81,8 @@ public class ControlPanel extends JPanel {
         JButton btnSetTags = new JButton("Tags setzen");
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
 
+        add(new TagSelectionPanel());
+
         lblThumbnailsLoadedCount = new JLabel("---------");
         add(lblThumbnailsLoadedCount);
     }

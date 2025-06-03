@@ -24,7 +24,7 @@ class AnimatedThumbnail {
         if (type == MEDIA_TYPE.IMAGE) return;
         if (isRunning || imageFiles == null || imageFiles.isEmpty()) return;
 
-        System.out.println("starting animation for " + filename);
+//        System.out.println("starting animation for " + filename);
         isRunning = true;
         currentIndex = 0;
 

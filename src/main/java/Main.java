@@ -9,9 +9,9 @@ public class Main {
     public static void main(String[] args){
         new ImageViewer();
 
-        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-        scheduler.scheduleAtFixedRate(() -> {
-            Controller.printMemoryUsage();
-        }, 0, 3, TimeUnit.SECONDS);
+//        ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+//        scheduler.scheduleAtFixedRate(() -> {
+//            Controller.printMemoryUsage();
+//        }, 0, 3, TimeUnit.SECONDS);
     }
 }
