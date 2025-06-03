@@ -5,6 +5,7 @@ import ui.ControlPanel;
 import ui.MediaView;
 import ui.ThumbnailPanel;
 
+import javax.swing.*;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -26,7 +27,7 @@ public class Controller {
 
     private List<File> mediaFiles;
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(4);
+    private final ExecutorService executor = Executors.newFixedThreadPool(8);
     private Path currentDirectory;
 
     public static Controller getInstance() {
@@ -171,16 +172,24 @@ public class Controller {
 
     public void setSelectedFiles(List<String> filesForSelectedTags) {
 
-        if (filesForSelectedTags.isEmpty()) {
-            thumbnailPanel.populate(mediaFiles);
+        Runnable task = () -> {
+            List<File> files = filesForSelectedTags.isEmpty()
+                    ? mediaFiles
+                    : filesForSelectedTags.stream().map(File::new).collect(Collectors.toList());
+
+            thumbnailPanel.populate(files);
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            new Thread(task).start();
         } else {
-            thumbnailPanel.populate(filesForSelectedTags.stream().map(File::new).collect(Collectors.toList()));
+            task.run();
         }
     }
 
     public Path getCurrentDirectory() {
 
-        if (currentDirectory == null){
+        if (currentDirectory == null) {
             currentDirectory = loadDefaultDirectoryFromSettingsJson();
         }
 

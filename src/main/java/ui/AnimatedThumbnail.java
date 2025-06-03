@@ -5,6 +5,7 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -24,7 +25,6 @@ class AnimatedThumbnail {
         if (type == MEDIA_TYPE.IMAGE) return;
         if (isRunning || imageFiles == null || imageFiles.isEmpty()) return;
 
-//        System.out.println("starting animation for " + filename);
         isRunning = true;
         currentIndex = 0;
 
@@ -43,6 +43,10 @@ class AnimatedThumbnail {
     }
 
     private void showIcon(int idx) {
+
+        if (!isRunning)
+           return;
+
         ImageIcon cached = cachedIcons.get(idx);
         if (cached != null) {
             label.setIcon(cached);

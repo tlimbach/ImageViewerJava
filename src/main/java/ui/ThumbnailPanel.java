@@ -67,14 +67,19 @@ public class ThumbnailPanel extends JPanel {
     private long currentGenerationId = 0;
     int processed = 0;
     public void populate(List<File> mediaFiles) {
+
+        H.isUiThread("a");
+
         long generation = ++currentGenerationId;
 
         thumbnailsLoadedCount = 0;
         totalFramesLoaded = 0;
         framesFromCache = 0;
 
+        long now = System.currentTimeMillis();
         animatedThumbnails.forEach(AnimatedThumbnail::stop);
         animatedThumbnails.clear();
+        System.out.println("took " + (System.currentTimeMillis()-now));
 
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
@@ -99,6 +104,7 @@ public class ThumbnailPanel extends JPanel {
                                     if (generation != currentGenerationId) return;
                                     addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.VIDEO, thumbFiles, file);
                                     thumbnailsLoadedCount++;
+
                                     Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
                                     updateVisibleThumbnails();  // sicherheitshalber
                                 });
@@ -107,11 +113,11 @@ public class ThumbnailPanel extends JPanel {
             }
         }
 
-        SwingUtilities.invokeLater(() -> {
-            newGridPanel.revalidate();
-            newGridPanel.repaint();
-            updateVisibleThumbnails();
-        });
+//        SwingUtilities.invokeLater(() -> {
+//            newGridPanel.revalidate();
+//            newGridPanel.repaint();
+//            updateVisibleThumbnails();
+//        });
     }
 
     private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file) {

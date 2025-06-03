@@ -15,4 +15,12 @@ public class H {
     public static void out(String string) {
         System.out.println(string);
     }
+
+    public static void isUiThread(String a) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            System.out.println("Ich bin im UI-Thread. " + a);
+        } else {
+            System.out.println("Ich bin NICHT im UI-Thread." + a);
+        }
+    }
 }
