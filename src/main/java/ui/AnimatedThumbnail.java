@@ -5,7 +5,6 @@ import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -19,53 +18,63 @@ class AnimatedThumbnail {
     String filename;
 
     private int currentIndex = 0;
-    private List<ImageIcon> cachedIcons = null;
+    private List<ImageIcon> cachedIcons;
 
     public void start() {
         if (type == MEDIA_TYPE.IMAGE) return;
         if (isRunning || imageFiles == null || imageFiles.isEmpty()) return;
 
         System.out.println("starting animation for " + filename);
-
         isRunning = true;
+        currentIndex = 0;
 
-        // Lade Bilder asynchron
-        CompletableFuture.supplyAsync(() -> {
-            List<ImageIcon> icons = new ArrayList<>();
-            for (File file : imageFiles) {
-                if (file == null) continue;
+        // Initialisiere Liste mit der richtigen Größe
+        cachedIcons = new java.util.ArrayList<>();
+        for (int i = 0; i < imageFiles.size(); i++) cachedIcons.add(null);
+
+        animationTimer = new Timer(ThumbnailPanel.ANIMATION_DELAY_PLAYBACK, e -> {
+            int idx = currentIndex % imageFiles.size();
+            showIcon(idx);
+            currentIndex++;
+        });
+
+        animationTimer.setRepeats(true);
+        animationTimer.start();
+    }
+
+    private void showIcon(int idx) {
+        ImageIcon cached = cachedIcons.get(idx);
+        if (cached != null) {
+            label.setIcon(cached);
+        } else {
+            // Asynchron laden, aber nur einmal pro Index
+            CompletableFuture.supplyAsync(() -> {
                 try {
-                    BufferedImage img = javax.imageio.ImageIO.read(file);
+                    BufferedImage img = javax.imageio.ImageIO.read(imageFiles.get(idx));
                     if (img != null) {
-                        icons.add(new ImageIcon(img));
+                        return new ImageIcon(img);
                     }
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
-            }
-            return icons;
-        }).thenAccept(icons -> {
-            SwingUtilities.invokeLater(() -> {
-                if (!isRunning || icons.isEmpty()) return;
-
-                cachedIcons = icons;
-                currentIndex = 0;
-
-                animationTimer = new Timer(ThumbnailPanel.ANIMATION_DELAY_PLAYBACK, e -> {
-                    if (cachedIcons != null && !cachedIcons.isEmpty()) {
-                        label.setIcon(cachedIcons.get(currentIndex % cachedIcons.size()));
-                        currentIndex++;
-                    }
-                });
-
-                animationTimer.setRepeats(true);
-                animationTimer.start();
+                return null;
+            }).thenAccept(icon -> {
+                if (icon != null && isRunning) {
+                    cachedIcons.set(idx, icon);
+                    SwingUtilities.invokeLater(() -> {
+                        if ((currentIndex - 1) % imageFiles.size() == idx) {
+                            // Zeige nur dann das Bild, wenn es gerade dran ist
+                            label.setIcon(icon);
+                        }
+                    });
+                }
             });
-        });
+        }
     }
 
     public void stop() {
-        System.out.println("Stopping animation for " + filename);
+
+        isRunning = false;
 
         if (animationTimer != null) {
             animationTimer.stop();
@@ -81,7 +90,5 @@ class AnimatedThumbnail {
             cachedIcons.clear();
             cachedIcons = null;
         }
-
-        isRunning = false;
     }
 }
