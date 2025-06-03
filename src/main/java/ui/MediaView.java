@@ -4,6 +4,7 @@ import service.Controller;
 import service.RangeHandler;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
+import uk.co.caprica.vlcj.player.base.State;
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent;
 
 import javax.swing.*;
@@ -13,11 +14,8 @@ import java.io.File;
 public class MediaView {
 
     private static final MediaView instance = new MediaView();
-
-
-    public static MediaView getInstance() {
-        return instance;
-    }
+    private File currentFile;
+    private RangeHandler.Range range;
 
     private final JFrame frame;
     private final CardLayout cardLayout;
@@ -25,11 +23,9 @@ public class MediaView {
     private final JLabel imageLabel;
     private final CallbackMediaPlayerComponent mediaPlayerComponent;
 
-    RangeHandler.Range range;
-
-    enum MODE {PLAY, STOP, PAUSE}
-
-    private MODE mode;
+    public static MediaView getInstance() {
+        return instance;
+    }
 
     private MediaView() {
         frame = new JFrame("Media Viewer");
@@ -40,26 +36,31 @@ public class MediaView {
         cardLayout = new CardLayout();
         stackPanel = new JPanel(cardLayout);
 
-        // Bildanzeige
         imageLabel = new JLabel("", SwingConstants.CENTER);
         imageLabel.setBackground(Color.BLACK);
         imageLabel.setOpaque(true);
         stackPanel.add(imageLabel, "image");
 
-        // Videoplayer-Komponente
         mediaPlayerComponent = new CallbackMediaPlayerComponent();
         stackPanel.add(mediaPlayerComponent.videoSurfaceComponent(), "video");
 
         frame.add(stackPanel, BorderLayout.CENTER);
 
+        initPlayerListener();
         startPositionUpdateTimer();
+    }
 
-        mediaPlayerComponent.mediaPlayer().events().addMediaPlayerEventListener(new MediaPlayerEventAdapter(){
+    private void initPlayerListener() {
+        mediaPlayerComponent.mediaPlayer().events().addMediaPlayerEventListener(new MediaPlayerEventAdapter() {
             @Override
             public void finished(MediaPlayer mediaPlayer) {
-                super.finished(mediaPlayer);
-                if (mode == MODE.PLAY){
-                    play();
+                if (currentFile != null) {
+                    if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
+                        mediaPlayer.controls().setTime((long) (range.start * 1000));
+                        mediaPlayer.controls().play();
+                    } else {
+                        mediaPlayer.media().play(currentFile.getAbsolutePath());
+                    }
                 }
             }
         });
@@ -67,20 +68,16 @@ public class MediaView {
 
     private void startPositionUpdateTimer() {
         Timer timer = new Timer(500, e -> {
-            long millis = mediaPlayerComponent.mediaPlayer().status().time();
-            long total = mediaPlayerComponent.mediaPlayer().status().length();
+            MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+            long millis = player.status().time();
+            long total = player.status().length();
 
             if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
                 long startMillis = (long) (range.start * 1000);
                 long endMillis = (long) (range.end * 1000);
 
-                if (millis < startMillis) {
-                    mediaPlayerComponent.mediaPlayer().controls().setTime(startMillis);
-                    return;
-                }
-
-                if (millis > endMillis) {
-                    mediaPlayerComponent.mediaPlayer().controls().setTime(startMillis); // oder stop?
+                if (millis < startMillis || millis > endMillis) {
+                    player.controls().setTime(startMillis);
                     return;
                 }
             }
@@ -90,70 +87,80 @@ public class MediaView {
         timer.start();
     }
 
-    public void display(File file) {
+    public void display(File file, boolean autostart) {
         if (file == null || !file.exists()) return;
 
-        range = new RangeHandler().getRangeForFile(file);
-
+        currentFile = file;
         stop();
+        range = new RangeHandler().getRangeForFile(file);
 
         frame.setVisible(true);
 
-        String name = file.getName().toLowerCase();
         if (Controller.isImageFile(file)) {
-            ImageIcon icon = new ImageIcon(file.getAbsolutePath());
-            Image image = icon.getImage();
-
-            int maxWidth = frame.getWidth() - 50;
-            int maxHeight = frame.getHeight() - 70;
-            double scale = Math.min((double) maxWidth / image.getWidth(null), (double) maxHeight / image.getHeight(null));
-
-            int newWidth = (int) (image.getWidth(null) * scale);
-            int newHeight = (int) (image.getHeight(null) * scale);
-
-            imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
-            cardLayout.show(stackPanel, "image");
-
+            showImage(file);
+        } else if (Controller.isVideoFile(file)) {
+            showVideo(file, autostart);
         }
+    }
 
-        if (Controller.isVideoFile(file)) {
-            cardLayout.show(stackPanel, "video");
-            SwingUtilities.invokeLater(() -> {
-                mediaPlayerComponent.mediaPlayer().media().play(file.getAbsolutePath());
-            });
+    private void showImage(File file) {
+        ImageIcon icon = new ImageIcon(file.getAbsolutePath());
+        Image image = icon.getImage();
+        int maxWidth = frame.getWidth() - 50;
+        int maxHeight = frame.getHeight() - 70;
+        double scale = Math.min((double) maxWidth / image.getWidth(null), (double) maxHeight / image.getHeight(null));
+
+        int newWidth = (int) (image.getWidth(null) * scale);
+        int newHeight = (int) (image.getHeight(null) * scale);
+
+        imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
+        cardLayout.show(stackPanel, "image");
+    }
+
+    private void showVideo(File file, boolean autostart) {
+        cardLayout.show(stackPanel, "video");
+        if (autostart) {
+            playVideoFile(file);
         }
+    }
+
+    private void playVideoFile(File file) {
+        SwingUtilities.invokeLater(() -> {
+            MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+            if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
+                player.media().startPaused(file.getAbsolutePath());
+                player.controls().setTime((long) (range.start * 1000));
+                player.controls().play();
+            } else {
+                player.media().play(file.getAbsolutePath());
+            }
+        });
     }
 
     public void play() {
-        mode = MODE.PLAY;
-        SwingUtilities.invokeLater(() -> {
-            mediaPlayerComponent.mediaPlayer().controls().play();
-        });
+        MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+        if (player.status().isPlayable() && player.status().state() == State.PAUSED) {
+            player.controls().play();
+        } else if (currentFile != null) {
+            frame.setVisible(true);
+            playVideoFile(currentFile);
+        }
     }
 
     public void stop() {
-        mode = MODE.STOP;
-        SwingUtilities.invokeLater(() -> {
-            mediaPlayerComponent.mediaPlayer().controls().stop();
-        });
+        SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().stop());
+        frame.dispose();
     }
 
     public void pause() {
-        mode = MODE.PAUSE;
-        SwingUtilities.invokeLater(() -> {
-            mediaPlayerComponent.mediaPlayer().controls().pause();
-        });
+        SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().pause());
     }
 
     public void fullscreen(boolean fullscreen) {
-        SwingUtilities.invokeLater(() -> {
-            mediaPlayerComponent.mediaPlayer().fullScreen();
-        });
+//        SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().fullScreen());
     }
 
     public void setPlayPos(float playPosInPercentage) {
-        SwingUtilities.invokeLater(() -> {
-            mediaPlayerComponent.mediaPlayer().controls().setPosition(playPosInPercentage);
-        });
+        SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().setPosition(playPosInPercentage));
     }
 }
