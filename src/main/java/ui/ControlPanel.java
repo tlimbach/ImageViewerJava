@@ -2,6 +2,7 @@ package ui;
 
 import service.Controller;
 import service.H;
+import service.RangeHandler;
 
 import javax.swing.*;
 import java.io.File;
@@ -14,6 +15,12 @@ public class ControlPanel extends JPanel {
     private Controller controller = Controller.getInstance();
 
     private JLabel lblThumbnailsLoadedCount;
+
+    private JTextField txtTimerangeStart;
+    private JTextField txtTimerangeEnde;
+    private JCheckBox chxIgnoreTimerange;
+
+    private JCheckBox cbxAutostart;
 
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -42,7 +49,8 @@ public class ControlPanel extends JPanel {
 
 
         JToggleButton btnPlayPause = new JToggleButton("Play/Pause");
-        JCheckBox cbxAutostart = new JCheckBox("Autostart");
+        ;
+        cbxAutostart = new JCheckBox("Autostart");
         add(H.makeHorizontalPanel(btnPlayPause, cbxAutostart));
         btnPlayPause.addActionListener(a -> {
             controller.playPause(btnPlayPause.isSelected());
@@ -52,9 +60,10 @@ public class ControlPanel extends JPanel {
         btnToggleFullscreen.addActionListener(a -> controller.setFullscreen(btnToggleFullscreen.isSelected()));
         add(btnToggleFullscreen);
 
-        JTextField txtTimerangeStart = new JTextField(5);
-        JTextField txtTimerangeEnde = new JTextField(5);
-        JCheckBox chxIgnoreTimerange = new JCheckBox("Zeitbereich ignorieren");
+
+        txtTimerangeStart = new JTextField(5);
+        txtTimerangeEnde = new JTextField(5);
+        chxIgnoreTimerange = new JCheckBox("Zeitbereich ignorieren");
         add(H.makeHorizontalPanel(txtTimerangeStart, txtTimerangeEnde, chxIgnoreTimerange));
 
         JButton btnTimerangeSave = new JButton("Bereich übernehmen");
@@ -107,5 +116,27 @@ public class ControlPanel extends JPanel {
 
     public void setThumbnailsLoaded(int thumbnailsLoadedCount, int totalThumbnails) {
         SwingUtilities.invokeLater(()->lblThumbnailsLoadedCount.setText("Thumbnails geladen: " + thumbnailsLoadedCount + " / " + totalThumbnails));
+    }
+
+    public void setSelectedFile(File file) {
+        RangeHandler.Range range = new RangeHandler().getRangeForFile(file);
+        SwingUtilities.invokeLater(()-> {
+            if (range != null) {
+                txtTimerangeStart.setText("" + range.start);
+                txtTimerangeEnde.setText("" + range.end);
+            } else {
+                txtTimerangeStart.setText(null);
+                txtTimerangeEnde.setText(null);
+            }
+        });
+
+    }
+
+    public boolean isAutostart() {
+        return cbxAutostart.isSelected();
+    }
+
+    public boolean isIgnoreTimerange() {
+        return chxIgnoreTimerange.isSelected();
     }
 }

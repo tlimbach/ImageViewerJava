@@ -26,7 +26,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 140;
     public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
-
+    private JLabel selectedLabel = null;
 
     private final JScrollPane scrollPane;
 
@@ -67,9 +67,6 @@ public class ThumbnailPanel extends JPanel {
     private long currentGenerationId = 0;
     int processed = 0;
     public void populate(List<File> mediaFiles) {
-
-        H.isUiThread("a");
-
         long generation = ++currentGenerationId;
 
         thumbnailsLoadedCount = 0;
@@ -131,6 +128,14 @@ public class ThumbnailPanel extends JPanel {
         label.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+
+                if (selectedLabel != null) {
+                    selectedLabel.setBorder(null);  // vorherige Auswahl entfernen
+                }
+
+                selectedLabel = label;
+                selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+
                 Controller.getInstance().handleMedia(file);
             }
         });

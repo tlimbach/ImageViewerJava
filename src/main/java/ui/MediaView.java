@@ -1,6 +1,9 @@
 package ui;
 
 import service.Controller;
+import service.RangeHandler;
+import uk.co.caprica.vlcj.player.base.MediaPlayer;
+import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent;
 
 import javax.swing.*;
@@ -11,6 +14,7 @@ public class MediaView {
 
     private static final MediaView instance = new MediaView();
 
+
     public static MediaView getInstance() {
         return instance;
     }
@@ -20,6 +24,12 @@ public class MediaView {
     private final JPanel stackPanel;
     private final JLabel imageLabel;
     private final CallbackMediaPlayerComponent mediaPlayerComponent;
+
+    RangeHandler.Range range;
+
+    enum MODE {PLAY, STOP, PAUSE}
+
+    private MODE mode;
 
     private MediaView() {
         frame = new JFrame("Media Viewer");
@@ -43,12 +53,38 @@ public class MediaView {
         frame.add(stackPanel, BorderLayout.CENTER);
 
         startPositionUpdateTimer();
+
+        mediaPlayerComponent.mediaPlayer().events().addMediaPlayerEventListener(new MediaPlayerEventAdapter(){
+            @Override
+            public void finished(MediaPlayer mediaPlayer) {
+                super.finished(mediaPlayer);
+                if (mode == MODE.PLAY){
+                    play();
+                }
+            }
+        });
     }
 
     private void startPositionUpdateTimer() {
         Timer timer = new Timer(500, e -> {
             long millis = mediaPlayerComponent.mediaPlayer().status().time();
             long total = mediaPlayerComponent.mediaPlayer().status().length();
+
+            if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
+                long startMillis = (long) (range.start * 1000);
+                long endMillis = (long) (range.end * 1000);
+
+                if (millis < startMillis) {
+                    mediaPlayerComponent.mediaPlayer().controls().setTime(startMillis);
+                    return;
+                }
+
+                if (millis > endMillis) {
+                    mediaPlayerComponent.mediaPlayer().controls().setTime(startMillis); // oder stop?
+                    return;
+                }
+            }
+
             Controller.getInstance().showCurrentPlayPosMillis(millis, total);
         });
         timer.start();
@@ -56,6 +92,8 @@ public class MediaView {
 
     public void display(File file) {
         if (file == null || !file.exists()) return;
+
+        range = new RangeHandler().getRangeForFile(file);
 
         stop();
 
@@ -87,18 +125,21 @@ public class MediaView {
     }
 
     public void play() {
+        mode = MODE.PLAY;
         SwingUtilities.invokeLater(() -> {
             mediaPlayerComponent.mediaPlayer().controls().play();
         });
     }
 
     public void stop() {
+        mode = MODE.STOP;
         SwingUtilities.invokeLater(() -> {
             mediaPlayerComponent.mediaPlayer().controls().stop();
         });
     }
 
     public void pause() {
+        mode = MODE.PAUSE;
         SwingUtilities.invokeLater(() -> {
             mediaPlayerComponent.mediaPlayer().controls().pause();
         });

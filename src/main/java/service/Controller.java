@@ -115,7 +115,10 @@ public class Controller {
     }
 
     public void handleMedia(File file) {
-        mediaView.display(file);
+        controlPanel.setSelectedFile(file);
+        if (controlPanel.isAutostart()) {
+            mediaView.display(file);
+        }
     }
 
     public void playPause(boolean selected) {
@@ -194,5 +197,9 @@ public class Controller {
         }
 
         return currentDirectory;
+    }
+
+    public boolean isIgnoreTimerange() {
+        return controlPanel.isIgnoreTimerange();
     }
 }

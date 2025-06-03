@@ -7,8 +7,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
+import java.util.Map;
 
 public class TagSelectionPanel extends JPanel {
 
@@ -34,12 +33,13 @@ public class TagSelectionPanel extends JPanel {
         setTags(handler.allTags());
     }
 
-    public void setTags(List<String> tags) {
+    public void setTags(Map<String, Integer> tags) {
         checkboxPanel.removeAll();
         checkboxes.clear();
 
-        for (String tag : tags) {
-            JCheckBox checkbox = new JCheckBox(tag);
+        for (String tag : tags.keySet()) {
+            int count = tags.get(tag);
+            JCheckBox checkbox = new JCheckBox(tag + " (" + count + ")");
             checkbox.addActionListener(e -> {
                 List<String> selectedTags = getSelectedTags();
                 List<String> files = handler.getFilesForSelectedTags(selectedTags);
@@ -57,7 +57,12 @@ public class TagSelectionPanel extends JPanel {
         List<String> selected = new ArrayList<>();
         for (JCheckBox checkbox : checkboxes) {
             if (checkbox.isSelected()) {
-                selected.add(checkbox.getText());
+                String label = checkbox.getText();
+                int index = label.lastIndexOf(" (");
+                if (index > 0) {
+                    label = label.substring(0, index); // schneidet " (12)" ab
+                }
+                selected.add(label);
             }
         }
         return selected;

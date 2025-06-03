@@ -60,8 +60,8 @@ public class TagHandler {
         }
     }
 
-    public List<String> allTags() {
-        Set<String> uniqueTags = new HashSet<>();
+    public Map<String, Integer> allTags() {
+        Map<String, Integer> tagCounts = new HashMap<>();
         Path currentDir = Controller.getInstance().getCurrentDirectory();
 
         for (String key : tagData.keySet()) {
@@ -71,13 +71,13 @@ public class TagHandler {
             String tagString = tagData.optString(key, "");
             if (!tagString.isEmpty()) {
                 String[] tags = tagString.trim().split("\\s+");
-                Collections.addAll(uniqueTags, tags);
+                for (String tag : tags) {
+                    tagCounts.put(tag, tagCounts.getOrDefault(tag, 0) + 1);
+                }
             }
         }
 
-        List<String> result = new ArrayList<>(uniqueTags);
-        Collections.sort(result);
-        return result;
+        return tagCounts;
     }
 
     public List<String> getFilesForSelectedTags(List<String> selectedTags) {
