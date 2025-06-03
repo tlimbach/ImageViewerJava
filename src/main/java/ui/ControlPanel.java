@@ -19,6 +19,8 @@ public class ControlPanel extends JPanel {
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
 
     private final JSlider sldMoviePosition = new JSlider();
+
+    private JToggleButton btnPlayPause;
     private boolean isUpdatingFromCode = false;
 
     public ControlPanel() {
@@ -57,7 +59,7 @@ public class ControlPanel extends JPanel {
     }
 
     private void addPlaybackControls() {
-        JToggleButton btnPlayPause = new JToggleButton("Play/Pause");
+        btnPlayPause = new JToggleButton("Play/Pause");
         btnPlayPause.addActionListener(a -> controller.playPause(btnPlayPause.isSelected()));
 
         JToggleButton btnFullscreen = new JToggleButton("Vollbild umschalten");
@@ -138,5 +140,9 @@ public class ControlPanel extends JPanel {
 
     public boolean isIgnoreTimerange() {
         return chxIgnoreTimerange.isSelected();
+    }
+
+    public void resetPlayPauseButton() {
+        btnPlayPause.setSelected(false);
     }
 }

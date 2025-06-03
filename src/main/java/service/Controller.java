@@ -154,4 +154,8 @@ public class Controller {
             return Paths.get(System.getProperty("user.home"));
         }
     }
+
+    public ControlPanel getControlPanel() {
+        return controlPanel;
+    }
 }

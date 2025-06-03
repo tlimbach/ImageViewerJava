@@ -33,6 +33,15 @@ public class MediaView {
         frame.setSize(1280, 768);
         frame.setLayout(new BorderLayout());
 
+        frame.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosing(java.awt.event.WindowEvent e) {
+                mediaPlayerComponent.mediaPlayer().controls().stop();
+               // mediaPlayerComponent.mediaPlayer().release(); // Optional: VLC-Ressourcen freigeben
+                Controller.getInstance().getControlPanel().resetPlayPauseButton();
+            }
+        });
+
         cardLayout = new CardLayout();
         stackPanel = new JPanel(cardLayout);
 
@@ -94,9 +103,10 @@ public class MediaView {
         stop();
         range = new RangeHandler().getRangeForFile(file);
 
-        frame.setVisible(true);
+
 
         if (Controller.isImageFile(file)) {
+            frame.setVisible(true);
             showImage(file);
         } else if (Controller.isVideoFile(file)) {
             showVideo(file, autostart);
@@ -120,6 +130,7 @@ public class MediaView {
     private void showVideo(File file, boolean autostart) {
         cardLayout.show(stackPanel, "video");
         if (autostart) {
+            frame.setVisible(true);
             playVideoFile(file);
         }
     }
