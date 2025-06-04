@@ -174,4 +174,8 @@ public class MediaView {
     public void setPlayPos(float playPosInPercentage) {
         SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().setPosition(playPosInPercentage));
     }
+
+    public boolean isVideoPlaying() {
+        return mediaPlayerComponent.mediaPlayer().status().isPlaying();
+    }
 }

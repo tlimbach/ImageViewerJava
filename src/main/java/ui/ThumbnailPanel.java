@@ -59,7 +59,7 @@ public class ThumbnailPanel extends JPanel {
         }
     }
 
-    List<AnimatedThumbnail> animatedThumbnails = new ArrayList<>();
+    public List<AnimatedThumbnail> animatedThumbnails = new ArrayList<>();
     int thumbnailsLoadedCount = 0;
     int totalFramesLoaded = 0;
     int framesFromCache = 0;

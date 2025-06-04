@@ -3,6 +3,7 @@ package ui;
 import service.Controller;
 import service.H;
 import service.RangeHandler;
+import service.SlideshowManager;
 
 import javax.swing.*;
 import java.io.File;
@@ -19,9 +20,10 @@ public class ControlPanel extends JPanel {
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
 
     private final JSlider sldMoviePosition = new JSlider();
-
+    private JTextField txtDuration;
     private JToggleButton btnPlayPause;
     private boolean isUpdatingFromCode = false;
+    private final SlideshowManager slideshowManager = new SlideshowManager();
 
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -51,10 +53,22 @@ public class ControlPanel extends JPanel {
     }
 
     private void addSlideshowControls() {
-        JTextField txtDuration = new JTextField(5);
-        txtDuration.setToolTipText("Anzeigedauer pro Bild");
+        txtDuration = new JTextField(5);
+        txtDuration.setToolTipText("Anzeigedauer pro Bild (Sekunden)");
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
+
+        btnStart.addActionListener(e -> {
+            try {
+                int duration = Integer.parseInt(txtDuration.getText());
+                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration);
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Bitte eine gültige Zahl für die Bilddauer eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        btnStop.addActionListener(e -> slideshowManager.stop());
+
         add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Bilddauer"), txtDuration));
     }
 

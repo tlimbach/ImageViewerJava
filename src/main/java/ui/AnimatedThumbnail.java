@@ -9,14 +9,14 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-class AnimatedThumbnail {
+public class AnimatedThumbnail {
     JLabel label;
     List<File> imageFiles;
     Timer animationTimer;
     boolean isRunning = false;
     MEDIA_TYPE type;
 
-    String filename;
+    public String filename;
 
     private int currentIndex = 0;
     private List<ImageIcon> cachedIcons;

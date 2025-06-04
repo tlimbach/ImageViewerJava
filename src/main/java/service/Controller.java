@@ -1,6 +1,7 @@
 package service;
 
 import org.json.JSONObject;
+import ui.AnimatedThumbnail;
 import ui.ControlPanel;
 import ui.MediaView;
 import ui.ThumbnailPanel;
@@ -30,6 +31,9 @@ public class Controller {
     public void setControlPanel(ControlPanel cp) { this.controlPanel = cp; }
     public void setThumbnailPanel(ThumbnailPanel tp) { this.thumbnailPanel = tp; }
     public void setMediaPanel(MediaView mv) { this.mediaView = mv; }
+
+    private volatile boolean slideshowActive = false;
+    private Future<?> slideshowTask;
 
     public void handleDirectory(Path directory) {
         this.currentDirectory = directory;
@@ -157,5 +161,18 @@ public class Controller {
 
     public ControlPanel getControlPanel() {
         return controlPanel;
+    }
+
+
+    public List<File> getCurrentlyDisplayedFiles() {
+        if (thumbnailPanel == null) return Collections.emptyList();
+
+        List<File> files = new ArrayList<>();
+        for (AnimatedThumbnail thumb : thumbnailPanel.animatedThumbnails) {
+            File file = new File(currentDirectory.toFile(), thumb.filename);
+            files.add(file);
+        }
+
+        return files;
     }
 }
