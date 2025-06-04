@@ -187,9 +187,55 @@ public class MediaView {
         SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().pause());
     }
 
-    public void fullscreen(boolean fullscreen) {
-//        SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().fullScreen());
+    private boolean isFullscreen = false;
+    private Rectangle windowedBounds;
+    private GraphicsDevice getCurrentScreenDeviceForFrame(JFrame frame) {
+        GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
+        GraphicsDevice[] devices = ge.getScreenDevices();
+
+        Rectangle frameBounds = frame.getBounds();
+        for (GraphicsDevice device : devices) {
+            GraphicsConfiguration config = device.getDefaultConfiguration();
+            Rectangle screenBounds = config.getBounds();
+            if (screenBounds.intersects(frameBounds)) {
+                return device;
+            }
+        }
+
+        // Fallback: primäres Gerät
+        return ge.getDefaultScreenDevice();
     }
+
+
+    public void fullscreen(boolean fullscreen) {
+        if (fullscreen == isFullscreen) return;
+
+        SwingUtilities.invokeLater(() -> {
+            GraphicsDevice device = getCurrentScreenDeviceForFrame(frame);
+
+            if (fullscreen) {
+                windowedBounds = frame.getBounds();
+                frame.dispose();
+                frame.setUndecorated(true);
+                device.setFullScreenWindow(frame);
+                frame.setVisible(true);
+            } else {
+                device.setFullScreenWindow(null);
+                frame.dispose();
+                frame.setUndecorated(false);
+                frame.setBounds(windowedBounds);
+                frame.setVisible(true);
+            }
+
+            frame.validate();
+            frame.repaint();
+            mediaPlayerComponent.videoSurfaceComponent().revalidate();
+            mediaPlayerComponent.videoSurfaceComponent().repaint();
+
+            isFullscreen = fullscreen;
+        });
+    }
+
 
     public void setPlayPos(float playPosInPercentage) {
         SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().setPosition(playPosInPercentage));
