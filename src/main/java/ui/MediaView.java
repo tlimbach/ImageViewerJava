@@ -9,6 +9,8 @@ import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.io.File;
 
 public class MediaView {
@@ -22,6 +24,8 @@ public class MediaView {
     private final JPanel stackPanel;
     private final JLabel imageLabel;
     private final CallbackMediaPlayerComponent mediaPlayerComponent;
+
+    private final LeftBar leftBar = new LeftBar();
 
     public static MediaView getInstance() {
         return instance;
@@ -54,9 +58,19 @@ public class MediaView {
         stackPanel.add(mediaPlayerComponent.videoSurfaceComponent(), "video");
 
         frame.add(stackPanel, BorderLayout.CENTER);
+        JLayeredPane layeredPane = frame.getLayeredPane();
+        leftBar.setBounds(0, 0, 10, frame.getHeight()); // Initialgröße
+        layeredPane.add(leftBar, JLayeredPane.PALETTE_LAYER);
 
         initPlayerListener();
         startPositionUpdateTimer();
+
+        frame.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentResized(ComponentEvent e) {
+                leftBar.setBounds(0, 0, 10, frame.getHeight());
+            }
+        });
     }
 
     private void initPlayerListener() {
@@ -125,6 +139,12 @@ public class MediaView {
 
         imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
         cardLayout.show(stackPanel, "image");
+
+        if (Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
+            leftBar.start(Controller.getInstance().getControlPanel().getSlideshowManager().getDurationMillis());
+        } else {
+            leftBar.setVisible(false);
+        }
     }
 
     private void showVideo(File file, boolean autostart) {
@@ -177,5 +197,9 @@ public class MediaView {
 
     public boolean isVideoPlaying() {
         return mediaPlayerComponent.mediaPlayer().status().isPlaying();
+    }
+
+    public LeftBar getLeftBar() {
+        return leftBar;
     }
 }

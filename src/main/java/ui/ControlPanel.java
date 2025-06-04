@@ -157,4 +157,8 @@ public class ControlPanel extends JPanel {
     public void resetPlayPauseButton() {
         btnPlayPause.setSelected(false);
     }
+
+    public SlideshowManager getSlideshowManager() {
+        return slideshowManager;
+    }
 }

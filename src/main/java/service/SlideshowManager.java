@@ -43,6 +43,7 @@ public class SlideshowManager {
             mediaView.display(file, false);
             scheduleNext();
         } else if (Controller.isVideoFile(file)) {
+            mediaView.getLeftBar().start(durationSeconds * 1000L);
             mediaView.display(file, true);
         }
     }
@@ -82,4 +83,8 @@ public class SlideshowManager {
     public boolean isRunning() {
         return running;
     }
-} 
+
+    public long getDurationMillis() {
+        return durationSeconds*1000;
+    }
+}
