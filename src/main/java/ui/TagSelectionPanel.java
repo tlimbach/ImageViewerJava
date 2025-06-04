@@ -33,11 +33,18 @@ public class TagSelectionPanel extends JPanel {
         setTags(handler.allTags());
     }
 
+    public void revalidateTags() {
+        setTags(handler.allTags());
+    }
+
     public void setTags(Map<String, Integer> tags) {
         checkboxPanel.removeAll();
         checkboxes.clear();
 
-        for (String tag : tags.keySet()) {
+        List<String> sortedTags = new ArrayList<>(tags.keySet());
+        sortedTags.sort(String.CASE_INSENSITIVE_ORDER);
+
+        for (String tag : sortedTags) {
             int count = tags.get(tag);
             JCheckBox checkbox = new JCheckBox(tag + " (" + count + ")");
             checkbox.addActionListener(e -> {
@@ -52,7 +59,6 @@ public class TagSelectionPanel extends JPanel {
         revalidate();
         repaint();
     }
-
     public List<String> getSelectedTags() {
         List<String> selected = new ArrayList<>();
         for (JCheckBox checkbox : checkboxes) {

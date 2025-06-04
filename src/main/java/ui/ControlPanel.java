@@ -31,6 +31,8 @@ public class ControlPanel extends JPanel {
     private JLabel lblVol;
 
      private  RangeHandler rangeHandler = new RangeHandler();
+    private TagSelectionPanel tagSelectionPanel;
+    private TagEditDialog tagEditDialog;
 
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -158,11 +160,19 @@ public class ControlPanel extends JPanel {
 
         txtUntaggedCount = new JLabel("(0)");
         JButton btnSetTags = new JButton("Tags setzen");
+        btnSetTags.addActionListener(a -> {
+
+            if (currentFile != null) {
+                tagEditDialog = new TagEditDialog();
+                tagEditDialog.setFile(currentFile);
+            }
+        });
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
 
         add(H.makeHorizontalPanel(btnShowUntagged, txtUntaggedCount));
         add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
-        add(new TagSelectionPanel());
+        tagSelectionPanel = new TagSelectionPanel();
+        add(tagSelectionPanel);
     }
 
     public void setCurrentPlayPosMillis(long millis, long total) {
@@ -187,6 +197,9 @@ public class ControlPanel extends JPanel {
 
     public void setSelectedFile(File file) {
         currentFile = file;
+        if (tagEditDialog != null) {
+            tagEditDialog.setFile(currentFile);
+        }
         RangeHandler.Range range = rangeHandler.getRangeForFile(file);
         SwingUtilities.invokeLater(() -> {
             if (range != null) {
@@ -223,5 +236,9 @@ public class ControlPanel extends JPanel {
 
     public void setUntaggedCount(int size) {
         txtUntaggedCount.setText("("+size+")");
+    }
+
+    public void reloadTagSelectinPanel() {
+        tagSelectionPanel.revalidateTags();
     }
 }
