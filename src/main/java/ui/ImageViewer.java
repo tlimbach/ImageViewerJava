@@ -24,7 +24,6 @@ public class ImageViewer {
         controller.setMediaPanel(mediaView);
 
         JFrame frame = new JFrame("Image Viewer");
-        frame.setUndecorated(true); // Für echten Vollbildmodus
         frame.setLayout(new BorderLayout());
         frame.add(controlPanel, BorderLayout.WEST);
         frame.add(thumbnailPanel, BorderLayout.CENTER);
@@ -34,16 +33,14 @@ public class ImageViewer {
         GraphicsDevice[] devices = GraphicsEnvironment.getLocalGraphicsEnvironment().getScreenDevices();
         GraphicsDevice targetDevice = devices.length > 1 ? devices[1] : devices[0];
 
-        // Vollbild auf Zielgerät setzen
-        GraphicsConfiguration config = targetDevice.getDefaultConfiguration();
-        Rectangle bounds = config.getBounds();
+        Rectangle bounds = targetDevice.getDefaultConfiguration().getBounds();
 
-        frame.setBounds(bounds);
-        targetDevice.setFullScreenWindow(frame);
+        // Fenster dorthin verschieben und maximieren
+        frame.setLocation(bounds.x, bounds.y);
+        frame.setExtendedState(JFrame.MAXIMIZED_BOTH);
 
         frame.setVisible(true);
 
-        // Standardverzeichnis laden
         Path def = controller.loadDefaultDirectoryFromSettingsJson();
         controller.handleDirectory(def);
         controller.updateUntaggedCount();

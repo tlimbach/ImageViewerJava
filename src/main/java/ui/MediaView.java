@@ -78,14 +78,19 @@ public class MediaView {
         mediaPlayerComponent.mediaPlayer().events().addMediaPlayerEventListener(new MediaPlayerEventAdapter() {
             @Override
             public void finished(MediaPlayer mediaPlayer) {
-                if (currentFile != null) {
+                if (currentFile == null) return;
+
+                SwingUtilities.invokeLater(() -> {
+                    MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+
                     if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
-                        mediaPlayer.controls().setTime((long) (range.start * 1000));
-                        mediaPlayer.controls().play();
+                        player.media().startPaused(currentFile.getAbsolutePath());
+                        player.controls().setTime((long) (range.start * 1000));
+                        player.controls().play();
                     } else {
-                        mediaPlayer.media().play(currentFile.getAbsolutePath());
+                        player.media().play(currentFile.getAbsolutePath());
                     }
-                }
+                });
             }
         });
     }

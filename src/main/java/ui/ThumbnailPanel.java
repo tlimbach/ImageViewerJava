@@ -129,6 +129,34 @@ public class ThumbnailPanel extends JPanel {
             @Override
             public void mouseClicked(MouseEvent e) {
 
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    // Kontextmenü erstellen
+                    JPopupMenu popup = new JPopupMenu();
+                    JMenuItem deleteItem = new JMenuItem("Bild löschen");
+
+                    deleteItem.addActionListener(ev -> {
+                        int result = JOptionPane.showConfirmDialog(label,
+                                "Bild wirklich löschen?\n" + file.getName(),
+                                "Löschen bestätigen",
+                                JOptionPane.YES_NO_OPTION);
+
+                        if (result == JOptionPane.YES_OPTION) {
+                            if (file.delete()) {
+                                Controller.getInstance().reloadCurrentDirectory();
+                            } else {
+                                JOptionPane.showMessageDialog(label,
+                                        "Datei konnte nicht gelöscht werden.",
+                                        "Fehler",
+                                        JOptionPane.ERROR_MESSAGE);
+                            }
+                        }
+                    });
+
+                    popup.add(deleteItem);
+                    popup.show(e.getComponent(), e.getX(), e.getY());
+                    return; // Kein weiterer Klickhandling bei Rechtsklick
+                }
+
                 if (selectedLabel != null) {
                     selectedLabel.setBorder(null);  // vorherige Auswahl entfernen
                 }
@@ -171,6 +199,15 @@ public class ThumbnailPanel extends JPanel {
         if (animatedThumbnails.size()<20)
         {
             aNail.start();
+        }
+    }
+
+    public void invalidateThumbnails(File videoFile) {
+        File[] cachedFiles = THUMBNAIL_CACHE_DIR.listFiles((dir, name) -> name.endsWith(videoFile.getName() + ".jpg"));
+        if (cachedFiles != null) {
+            for (File f : cachedFiles) {
+                f.delete();
+            }
         }
     }
 

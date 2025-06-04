@@ -42,6 +42,8 @@ public class RangeHandler {
         }
 
         save();
+
+        Controller.getInstance().invalidateThumbnailsForFile(file);
     }
 
     private void load() {

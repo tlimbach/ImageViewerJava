@@ -49,6 +49,11 @@ public class Controller {
         thumbnailPanel.populate(mediaFiles);
     }
 
+    public void reloadCurrentDirectory() {
+        handleDirectory(currentDirectory);
+        updateUntaggedCount();
+    }
+
     public void setSelectedFiles(List<String> filePaths) {
         Runnable task = () -> {
             List<File> files = filePaths.isEmpty()
@@ -191,5 +196,14 @@ public class Controller {
 
     public MediaView getMediaView(){
         return mediaView;
+    }
+
+    public void invalidateThumbnailsForFile(File file) {
+        thumbnailPanel.invalidateThumbnails(file);
+        reloadCurrentDirectory();
+    }
+
+    public void setCurrentFileFromSlideShow(File file) {
+        controlPanel.setSelectedFile(file);
     }
 }
