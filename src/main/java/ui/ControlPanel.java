@@ -83,9 +83,21 @@ public class ControlPanel extends JPanel {
         JButton btnStop = new JButton("Stop");
         btnStop.addActionListener(a -> {
             controller.stop();
+            controller.setFullscreen(false);
+            controller.hideMediaPanel();
             slideshowManager.stop();
             resetPlayPauseButton();
-            controller.hideMediaPanel();
+
+            Timer t = new Timer(10, (e) -> {
+                controller.stop();
+                controller.setFullscreen(false);
+                controller.hideMediaPanel();
+                slideshowManager.stop();
+                resetPlayPauseButton();
+            });
+            t.setRepeats(false);
+            t.start();
+
         });
 
         JToggleButton btnFullscreen = new JToggleButton("Vollbild");

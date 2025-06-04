@@ -18,7 +18,7 @@ public class Controller {
     private static final Controller instance = new Controller();
     public static Controller getInstance() { return instance; }
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(8);
+    private final ExecutorService executor = Executors.newFixedThreadPool(2);
     private final String SETTINGS_FILE = "settings.json";
 
     private ControlPanel controlPanel;

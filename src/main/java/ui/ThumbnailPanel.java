@@ -1,7 +1,7 @@
 package ui;
 
 import service.Controller;
-import service.H;
+import service.RangeHandler;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -91,7 +91,7 @@ public class ThumbnailPanel extends JPanel {
                 Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
             } else if (Controller.isVideoFile(file)) {
                 CompletableFuture
-                        .supplyAsync(() -> loadThumbnails(file, 1000, ANIMATION_FRAMES_PER_THUMBNAIL),
+                        .supplyAsync(() -> loadThumbnails(file,  ANIMATION_FRAMES_PER_THUMBNAIL),
                                 Controller.getInstance().getExecutor())
                         .thenAccept(thumbFiles -> {
                             if (generation != currentGenerationId) return;
@@ -197,8 +197,14 @@ public class ThumbnailPanel extends JPanel {
         return result;
     }
 
-    private List<File> loadThumbnails(File videoFile, int startMillis, int count) {
-        int millis = startMillis;
+    private List<File> loadThumbnails(File videoFile, int count) {
+        int millis = 0;
+        RangeHandler.Range range = new RangeHandler().getRangeForFile(videoFile);
+
+        if (range != null) {
+            millis = (int) (range.start*1000);
+        }
+
         List<File> files = new ArrayList<>();
         for (int t = 0; t < count; t++) {
             File thumb = fetchVideoThumbnail(videoFile, millis);
