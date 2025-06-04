@@ -27,6 +27,9 @@ public class ControlPanel extends JPanel {
     private JLabel txtUntaggedCount;
     private File currentFile;
 
+    private JSlider sldVolume;
+    private JLabel lblVol;
+
      private  RangeHandler rangeHandler = new RangeHandler();
 
     public ControlPanel() {
@@ -135,8 +138,14 @@ public class ControlPanel extends JPanel {
     }
 
     private void addVolumeControl() {
-        JSlider sldVolume = new JSlider();
-        add(H.makeHorizontalPanel(new JLabel("Lautstärke"), sldVolume));
+        lblVol = new JLabel("---");
+        sldVolume = new JSlider();
+        sldVolume.addChangeListener(l-> {
+            Controller.getInstance().getMediaView().setVolume(sldVolume.getValue());
+            VolumeHandler.getInstance().setVolumeForFile(currentFile.getAbsolutePath(), sldVolume.getValue());
+            lblVol.setText(""+sldVolume.getValue());
+        });
+        add(H.makeHorizontalPanel(new JLabel("Lautstärke"), sldVolume, lblVol));
     }
 
     private void addTagControls() {
@@ -188,6 +197,12 @@ public class ControlPanel extends JPanel {
                 txtTimerangeEnde.setText(null);
             }
         });
+        int vol = VolumeHandler.getInstance().getVolumeForFile(file.getAbsolutePath());
+        SwingUtilities.invokeLater(()->{
+            lblVol.setText(""+vol);
+            sldVolume.setValue(vol);
+        });
+
     }
 
     public boolean isAutostart() {

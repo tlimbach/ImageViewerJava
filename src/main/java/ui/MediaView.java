@@ -2,6 +2,7 @@ package ui;
 
 import service.Controller;
 import service.RangeHandler;
+import service.VolumeHandler;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
 import uk.co.caprica.vlcj.player.base.State;
@@ -117,8 +118,6 @@ public class MediaView {
         stop();
         range = new RangeHandler().getRangeForFile(file);
 
-
-
         if (Controller.isImageFile(file)) {
             frame.setVisible(true);
             showImage(file);
@@ -156,15 +155,31 @@ public class MediaView {
     }
 
     private void playVideoFile(File file) {
+        int vol = VolumeHandler.getInstance().getVolumeForFile(file.getAbsolutePath());
         SwingUtilities.invokeLater(() -> {
             MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+
             if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
                 player.media().startPaused(file.getAbsolutePath());
                 player.controls().setTime((long) (range.start * 1000));
                 player.controls().play();
+                setVolume(vol);
             } else {
                 player.media().play(file.getAbsolutePath());
+                setVolume(vol);
             }
+
+        });
+        Timer t = new Timer(30, e -> setVolume(vol));
+        t.setRepeats(false);
+        t.start();
+
+    }
+
+    public void setVolume(int vol) {
+        SwingUtilities.invokeLater(() -> {
+            MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+            player.audio().setVolume(vol);
         });
     }
 

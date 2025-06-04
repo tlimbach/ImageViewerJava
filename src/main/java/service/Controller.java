@@ -188,4 +188,8 @@ public class Controller {
         List <File> untagged = TagHandler.getInstance().getUntaggedFiles();
         controlPanel.setUntaggedCount(untagged.size());
     }
+
+    public MediaView getMediaView(){
+        return mediaView;
+    }
 }
