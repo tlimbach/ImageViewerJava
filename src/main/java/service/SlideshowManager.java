@@ -21,7 +21,8 @@ public class SlideshowManager {
     public void start(List<File> files, int durationSeconds) {
         if (files == null || files.isEmpty()) return;
 
-        this.files = files;
+        this.files = new java.util.ArrayList<>(files);
+        java.util.Collections.shuffle(this.files);
         this.durationSeconds = durationSeconds;
         this.currentIndex = 0;
         this.running = true;
@@ -31,9 +32,11 @@ public class SlideshowManager {
     }
 
     private void showCurrent() {
-        if (!running || currentIndex >= files.size()) {
-            stop();
-            return;
+        if (!running) return;
+        if (files == null || files.isEmpty()) return;
+        if (currentIndex >= files.size()) {
+            java.util.Collections.shuffle(files);
+            currentIndex = 0;
         }
 
         File file = files.get(currentIndex);
