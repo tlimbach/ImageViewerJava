@@ -160,7 +160,7 @@ public class MediaView {
 
     public void stop() {
         SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().stop());
-        frame.dispose();
+//        frame.setVisible(false);
     }
 
     public void pause() {
