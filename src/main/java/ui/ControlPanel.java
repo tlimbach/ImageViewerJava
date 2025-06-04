@@ -25,6 +25,9 @@ public class ControlPanel extends JPanel {
     private final SlideshowManager slideshowManager = new SlideshowManager();
 
     private JLabel txtUntaggedCount;
+    private File currentFile;
+
+     private  RangeHandler rangeHandler = new RangeHandler();
 
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -96,6 +99,18 @@ public class ControlPanel extends JPanel {
         JButton btnSaveRange = new JButton("übernehmen");
         add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
         add(H.makeHorizontalPanel(btnSaveRange, chxIgnoreTimerange));
+        btnSaveRange.addActionListener(a -> {
+            try {
+                double start = Double.parseDouble(txtTimerangeStart.getText());
+                double end = Double.parseDouble(txtTimerangeEnde.getText());
+                if (currentFile != null) {
+                    rangeHandler.setRangeForFile(start, end, currentFile);
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Bitte gültige Zahlen für Start und Ende eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
     }
 
     private void addSliderPositionControl() {
@@ -150,7 +165,8 @@ public class ControlPanel extends JPanel {
     }
 
     public void setSelectedFile(File file) {
-        RangeHandler.Range range = new RangeHandler().getRangeForFile(file);
+        currentFile = file;
+        RangeHandler.Range range = rangeHandler.getRangeForFile(file);
         SwingUtilities.invokeLater(() -> {
             if (range != null) {
                 txtTimerangeStart.setText(String.valueOf(range.start));
