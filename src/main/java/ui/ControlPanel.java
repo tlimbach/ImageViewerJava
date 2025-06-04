@@ -38,7 +38,7 @@ public class ControlPanel extends JPanel {
         addVolumeControl();
         addTagControls();
 
-        add(lblThumbnailsLoadedCount);
+        add(H.makeHorizontalPanel(lblThumbnailsLoadedCount));
     }
 
     private void addFileChooserButton() {
@@ -54,7 +54,7 @@ public class ControlPanel extends JPanel {
     }
 
     private void addSlideshowControls() {
-        txtDuration = new JTextField(5);
+        txtDuration = new JTextField(3);
         txtDuration.setToolTipText("Anzeigedauer pro Bild (Sekunden)");
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
@@ -70,7 +70,7 @@ public class ControlPanel extends JPanel {
 
         btnStop.addActionListener(e -> slideshowManager.stop());
 
-        add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Bilddauer"), txtDuration));
+        add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Dauer"), txtDuration));
     }
 
     private void addPlaybackControls() {
@@ -88,11 +88,12 @@ public class ControlPanel extends JPanel {
         JToggleButton btnFullscreen = new JToggleButton("Vollbild");
         btnFullscreen.addActionListener(a -> controller.setFullscreen(btnFullscreen.isSelected()));
 
-        add(H.makeHorizontalPanel(btnPlayPause, btnStop, cbxAutostart, btnFullscreen));
+        add(H.makeHorizontalPanel(btnPlayPause, btnStop));
+        add(H.makeHorizontalPanel( cbxAutostart, btnFullscreen));
     }
 
     private void addRangeControls() {
-        JButton btnSaveRange = new JButton("Ber. übernehmen");
+        JButton btnSaveRange = new JButton("übernehmen");
         add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
         add(H.makeHorizontalPanel(btnSaveRange, chxIgnoreTimerange));
     }
@@ -103,7 +104,7 @@ public class ControlPanel extends JPanel {
                 controller.setPlayPos((float) sldMoviePosition.getValue() / sldMoviePosition.getMaximum());
             }
         });
-        add(H.makeHorizontalPanel(new JLabel("akt. Pos."), sldMoviePosition, lblPosition));
+        add(H.makeHorizontalPanel(new JLabel("Pos"), sldMoviePosition, lblPosition));
     }
 
     private void addVolumeControl() {
