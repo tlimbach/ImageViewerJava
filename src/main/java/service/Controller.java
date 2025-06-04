@@ -61,9 +61,9 @@ public class Controller {
         else task.run();
     }
 
-    public void handleMedia(File file) {
+    public void handleMedia(File file, boolean isDoubleClick) {
         controlPanel.setSelectedFile(file);
-        mediaView.display(file, controlPanel.isAutostart());
+        mediaView.display(file, isDoubleClick ||controlPanel.isAutostart());
     }
 
     public void playPause(boolean playing) {

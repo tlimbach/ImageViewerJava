@@ -136,7 +136,11 @@ public class ThumbnailPanel extends JPanel {
                 selectedLabel = label;
                 selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
 
-                Controller.getInstance().handleMedia(file);
+                if (e.getClickCount() == 1) {
+                    Controller.getInstance().handleMedia(file, false);
+                }else if (e.getClickCount() == 2){
+                    Controller.getInstance().handleMedia(file, true);
+                }
             }
         });
 
