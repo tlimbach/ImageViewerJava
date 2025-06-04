@@ -47,15 +47,15 @@ public class ControlPanel extends JPanel {
                 controller.handleDirectory(chooser.getSelectedFile().toPath());
             }
         });
-        add(btnFileChooser);
+        add(H.makeHorizontalPanel(btnFileChooser));
     }
 
     private void addSlideshowControls() {
-        JTextField txtDuration = new JTextField(20);
+        JTextField txtDuration = new JTextField(5);
         txtDuration.setToolTipText("Anzeigedauer pro Bild");
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
-        add(H.makeHorizontalPanel(txtDuration, btnStart, btnStop));
+        add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Bilddauer"), txtDuration));
     }
 
     private void addPlaybackControls() {
@@ -65,14 +65,13 @@ public class ControlPanel extends JPanel {
         JToggleButton btnFullscreen = new JToggleButton("Vollbild umschalten");
         btnFullscreen.addActionListener(a -> controller.setFullscreen(btnFullscreen.isSelected()));
 
-        add(H.makeHorizontalPanel(btnPlayPause, cbxAutostart));
-        add(btnFullscreen);
+        add(H.makeHorizontalPanel(btnPlayPause, cbxAutostart, btnFullscreen));
     }
 
     private void addRangeControls() {
         JButton btnSaveRange = new JButton("Bereich übernehmen");
-        add(H.makeHorizontalPanel(txtTimerangeStart, txtTimerangeEnde, chxIgnoreTimerange));
-        add(btnSaveRange);
+        add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
+        add(H.makeHorizontalPanel(btnSaveRange,chxIgnoreTimerange));
     }
 
     private void addSliderPositionControl() {
@@ -81,7 +80,7 @@ public class ControlPanel extends JPanel {
                 controller.setPlayPos((float) sldMoviePosition.getValue() / sldMoviePosition.getMaximum());
             }
         });
-        add(H.makeHorizontalPanel(sldMoviePosition, lblPosition));
+        add(H.makeHorizontalPanel(new JLabel("akt. Pos."), sldMoviePosition, lblPosition));
     }
 
     private void addVolumeControl() {
@@ -91,13 +90,12 @@ public class ControlPanel extends JPanel {
 
     private void addTagControls() {
         JButton btnShowUntagged = new JButton("Untagged anzeigen");
-        JTextField txtUntaggedCount = new JTextField(5);
+        JLabel txtUntaggedCount = new JLabel("(0)");
         JButton btnSetTags = new JButton("Tags setzen");
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
 
         add(H.makeHorizontalPanel(btnShowUntagged, txtUntaggedCount));
-        add(btnSetTags);
-        add(cbxAutoOpenTagsDialog);
+        add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
         add(new TagSelectionPanel());
     }
 

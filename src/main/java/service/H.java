@@ -7,8 +7,8 @@ import java.util.Arrays;
 public class H {
 
     public static Component makeHorizontalPanel(JComponent... components) {
-        JPanel panel = new JPanel(new FlowLayout());
-        Arrays.stream(components).forEach(p->panel.add(p));
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        Arrays.stream(components).forEach(panel::add);
         return panel;
     }
 
