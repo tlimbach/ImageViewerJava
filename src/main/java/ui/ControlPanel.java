@@ -1,13 +1,12 @@
 package ui;
 
-import service.Controller;
-import service.H;
-import service.RangeHandler;
-import service.SlideshowManager;
+import service.*;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.File;
 import java.nio.file.Path;
+import java.util.List;
 
 public class ControlPanel extends JPanel {
 
@@ -16,7 +15,7 @@ public class ControlPanel extends JPanel {
     private final JLabel lblThumbnailsLoadedCount = new JLabel("---------");
     private final JTextField txtTimerangeStart = new JTextField(5);
     private final JTextField txtTimerangeEnde = new JTextField(5);
-    private final JCheckBox chxIgnoreTimerange = new JCheckBox("Zeitbereich ignorieren");
+    private final JCheckBox chxIgnoreTimerange = new JCheckBox("Z. ignorieren");
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
 
     private final JSlider sldMoviePosition = new JSlider();
@@ -24,6 +23,8 @@ public class ControlPanel extends JPanel {
     private JToggleButton btnPlayPause;
     private boolean isUpdatingFromCode = false;
     private final SlideshowManager slideshowManager = new SlideshowManager();
+
+    private JLabel txtUntaggedCount;
 
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -76,16 +77,24 @@ public class ControlPanel extends JPanel {
         btnPlayPause = new JToggleButton("Play/Pause");
         btnPlayPause.addActionListener(a -> controller.playPause(btnPlayPause.isSelected()));
 
-        JToggleButton btnFullscreen = new JToggleButton("Vollbild umschalten");
+        JButton btnStop = new JButton("Stop");
+        btnStop.addActionListener(a -> {
+            controller.stop();
+            slideshowManager.stop();
+            resetPlayPauseButton();
+            controller.hideMediaPanel();
+        });
+
+        JToggleButton btnFullscreen = new JToggleButton("Vollbild");
         btnFullscreen.addActionListener(a -> controller.setFullscreen(btnFullscreen.isSelected()));
 
-        add(H.makeHorizontalPanel(btnPlayPause, cbxAutostart, btnFullscreen));
+        add(H.makeHorizontalPanel(btnPlayPause, btnStop, cbxAutostart, btnFullscreen));
     }
 
     private void addRangeControls() {
-        JButton btnSaveRange = new JButton("Bereich übernehmen");
+        JButton btnSaveRange = new JButton("Ber. übernehmen");
         add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
-        add(H.makeHorizontalPanel(btnSaveRange,chxIgnoreTimerange));
+        add(H.makeHorizontalPanel(btnSaveRange, chxIgnoreTimerange));
     }
 
     private void addSliderPositionControl() {
@@ -104,7 +113,13 @@ public class ControlPanel extends JPanel {
 
     private void addTagControls() {
         JButton btnShowUntagged = new JButton("Untagged anzeigen");
-        JLabel txtUntaggedCount = new JLabel("(0)");
+
+        btnShowUntagged.addActionListener(a->{
+            List<File> files = TagHandler.getInstance().getUntaggedFiles();
+            Controller.getInstance().setSelectedFiles(files.stream().map(File::getAbsolutePath).toList());
+        });
+
+        txtUntaggedCount = new JLabel("(0)");
         JButton btnSetTags = new JButton("Tags setzen");
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
 
@@ -160,5 +175,9 @@ public class ControlPanel extends JPanel {
 
     public SlideshowManager getSlideshowManager() {
         return slideshowManager;
+    }
+
+    public void setUntaggedCount(int size) {
+        txtUntaggedCount.setText("("+size+")");
     }
 }

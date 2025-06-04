@@ -175,4 +175,17 @@ public class Controller {
 
         return files;
     }
+
+    public void stop() {
+        mediaView.stop();
+    }
+
+    public void hideMediaPanel() {
+        mediaView.hideFrame();
+    }
+
+    public void updateUntaggedCount() {
+        List <File> untagged = TagHandler.getInstance().getUntaggedFiles();
+        controlPanel.setUntaggedCount(untagged.size());
+    }
 }

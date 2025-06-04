@@ -13,7 +13,7 @@ public class TagSelectionPanel extends JPanel {
 
     private final JPanel checkboxPanel;
 
-    private TagHandler handler = new TagHandler();
+    private TagHandler handler = TagHandler.getInstance();
     private final List<JCheckBox> checkboxes = new ArrayList<>();
 
     public TagSelectionPanel() {

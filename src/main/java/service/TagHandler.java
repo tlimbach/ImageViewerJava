@@ -11,10 +11,16 @@ import java.util.*;
 
 public class TagHandler {
 
+    private static TagHandler tagHandler = new TagHandler();
+
+    public static TagHandler getInstance() {
+        return tagHandler;
+    }
+
     private final String tagFileName = "media_tags.json";
     private JSONObject tagData;
 
-    public TagHandler() {
+    private TagHandler() {
         load();
     }
 
@@ -102,5 +108,36 @@ public class TagHandler {
         long t1 = System.nanoTime();
 //        System.out.println("Tag filter duration: " + (t1 - t0)/1_000_000.0 + " ms");
         return matchingFiles;
+    }
+
+
+    public List<File> getUntaggedFiles() {
+        Path currentDir = Controller.getInstance().getCurrentDirectory();
+        if (currentDir == null) return Collections.emptyList();
+
+        File[] files = currentDir.toFile().listFiles((dir, name) -> {
+            String lower = name.toLowerCase();
+            return lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")
+                    || lower.endsWith(".gif") || lower.endsWith(".bmp")
+                    || lower.endsWith(".mp4") || lower.endsWith(".avi") || lower.endsWith(".mov") || lower.endsWith(".mkv");
+        });
+
+        if (files == null) return Collections.emptyList();
+
+        List<File> untagged = new ArrayList<>();
+
+        for (File file : files) {
+            String absolutePath = file.getAbsolutePath();
+            if (!tagData.has(absolutePath)) {
+                untagged.add(file);
+            } else {
+                String tags = tagData.optString(absolutePath, "").trim();
+                if (tags.isEmpty()) {
+                    untagged.add(file);
+                }
+            }
+        }
+
+        return untagged;
     }
 }

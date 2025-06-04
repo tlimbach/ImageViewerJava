@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 
 public class ThumbnailPanel extends JPanel {
 
-    private final static int THUMBNAIL_WIDTH = 470;
+    private final static int THUMBNAIL_WIDTH = 420;
     private final static int THUMBNAIL_HEIGHT = (int) (THUMBNAIL_WIDTH * 9.0 / 16);  // ≈ 265
     private final static int PREVIEW_IMAGE_WIDTH = THUMBNAIL_WIDTH;
     private final static int PREVIEW_IMAGE_HEIGHT = THUMBNAIL_HEIGHT;

@@ -180,7 +180,6 @@ public class MediaView {
 
     public void stop() {
         SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().stop());
-//        frame.setVisible(false);
     }
 
     public void pause() {
@@ -247,5 +246,9 @@ public class MediaView {
 
     public LeftBar getLeftBar() {
         return leftBar;
+    }
+
+    public void hideFrame() {
+        frame.setVisible(false);
     }
 }
