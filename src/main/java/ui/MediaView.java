@@ -1,6 +1,9 @@
 package ui;
 
+import event.*;
+import model.AppState;
 import service.Controller;
+import service.EventBus;
 import service.RangeHandler;
 import service.VolumeHandler;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
@@ -72,6 +75,32 @@ public class MediaView {
                 leftBar.setBounds(0, 0, 10, frame.getHeight());
             }
         });
+
+        EventBus.get().register(MediaviewPlayEvent.class, e->{
+            if (e.selected()) {
+                play();
+            } else {
+                pause();
+            }
+        });
+
+        EventBus.get().register(MediaViewStopEvent.class, e->{
+            stop();
+            fullscreen(false);
+            hideFrame();
+        });
+
+        EventBus.get().register(CurrentPlaybackSliderPosEvent.class, e->{
+            SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().setPosition(e.value()));
+        });
+
+        EventBus.get().register(MediaViewFullscreenEvent.class, e->{
+            fullscreen(e.selected());
+        });
+
+        EventBus.get().register(VolumeChangedEvent.class, e-> {
+            setVolume(e.volume());
+        });
     }
 
     private void initPlayerListener() {
@@ -83,7 +112,7 @@ public class MediaView {
                 SwingUtilities.invokeLater(() -> {
                     MediaPlayer player = mediaPlayerComponent.mediaPlayer();
 
-                    if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
+                    if (range != null && !AppState.get().isIgnoreTimerange()) {
                         player.media().startPaused(currentFile.getAbsolutePath());
                         player.controls().setTime((long) (range.start * 1000));
                         player.controls().play();
@@ -101,7 +130,7 @@ public class MediaView {
             long millis = player.status().time();
             long total = player.status().length();
 
-            if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
+            if (range != null && !AppState.get().isIgnoreTimerange()) {
                 long startMillis = (long) (range.start * 1000);
                 long endMillis = (long) (range.end * 1000);
 
@@ -111,7 +140,7 @@ public class MediaView {
                 }
             }
 
-            Controller.getInstance().showCurrentPlayPosMillis(millis, total);
+            EventBus.get().publish(new CurrentPlaybackPosEvent(millis, total));
         });
         timer.start();
     }
@@ -164,7 +193,7 @@ public class MediaView {
         SwingUtilities.invokeLater(() -> {
             MediaPlayer player = mediaPlayerComponent.mediaPlayer();
 
-            if (range != null && !Controller.getInstance().isIgnoreTimerange()) {
+            if (range != null && !AppState.get().isIgnoreTimerange()) {
                 player.media().startPaused(file.getAbsolutePath());
                 player.controls().setTime((long) (range.start * 1000));
                 player.controls().play();
@@ -256,9 +285,7 @@ public class MediaView {
     }
 
 
-    public void setPlayPos(float playPosInPercentage) {
-        SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().setPosition(playPosInPercentage));
-    }
+
 
     public boolean isVideoPlaying() {
         return mediaPlayerComponent.mediaPlayer().status().isPlaying();

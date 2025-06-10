@@ -1,5 +1,6 @@
 package service;
 
+import event.SlideshowCurrentFile;
 import ui.MediaView;
 
 import javax.swing.*;
@@ -46,7 +47,7 @@ public class SlideshowManager {
             mediaView.display(file, false);
             scheduleNext();
         } else if (Controller.isVideoFile(file)) {
-            Controller.getInstance().setCurrentFileFromSlideShow(file);
+            EventBus.get().publish(new SlideshowCurrentFile(file));
             mediaView.getLeftBar().start(durationSeconds * 1000L);
             mediaView.display(file, true);
         }

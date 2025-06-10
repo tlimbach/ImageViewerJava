@@ -1,3 +1,3 @@
 package ui;
 
-enum MEDIA_TYPE {IMAGE, VIDEO}
+public enum MEDIA_TYPE {IMAGE, VIDEO}

@@ -1,11 +1,11 @@
 package ui;
 
+import event.*;
+import model.AppState;
 import service.*;
 
 import javax.swing.*;
-import java.awt.*;
 import java.io.File;
-import java.nio.file.Path;
 import java.util.List;
 
 public class ControlPanel extends JPanel {
@@ -15,7 +15,7 @@ public class ControlPanel extends JPanel {
     private final JLabel lblThumbnailsLoadedCount = new JLabel("---------");
     private final JTextField txtTimerangeStart = new JTextField(5);
     private final JTextField txtTimerangeEnde = new JTextField(5);
-    private final JCheckBox chxIgnoreTimerange = new JCheckBox("Z. ignorieren");
+    private final JCheckBox cbxIgnoreTimerange = new JCheckBox("Z. ignorieren");
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
 
     private final JSlider sldMoviePosition = new JSlider();
@@ -47,6 +47,14 @@ public class ControlPanel extends JPanel {
         addTagControls();
 
         add(H.makeHorizontalPanel(lblThumbnailsLoadedCount));
+
+        EventBus.get().register(CurrentPlaybackPosEvent.class, e->{
+            setCurrentPlayPosMillis(e.currentMillis(), e.totalMinis());
+        });
+
+        EventBus.get().register(SlideshowCurrentFile.class, e->{
+            setSelectedFile(e.file());
+        });
     }
 
     private void addFileChooserButton() {
@@ -55,7 +63,7 @@ public class ControlPanel extends JPanel {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
             if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                controller.handleDirectory(chooser.getSelectedFile().toPath());
+                MediaService.getInstance().setDirectory(chooser.getSelectedFile().toPath());
             }
         });
         add(H.makeHorizontalPanel(btnFileChooser));
@@ -83,30 +91,17 @@ public class ControlPanel extends JPanel {
 
     private void addPlaybackControls() {
         btnPlayPause = new JToggleButton("Play/Pause");
-        btnPlayPause.addActionListener(a -> controller.playPause(btnPlayPause.isSelected()));
+        btnPlayPause.addActionListener(a -> {
+            EventBus.get().publish(new MediaviewPlayEvent(btnPlayPause.isSelected()));
+        });
 
         JButton btnStop = new JButton("Stop");
         btnStop.addActionListener(a -> {
-            controller.stop();
-            controller.setFullscreen(false);
-            controller.hideMediaPanel();
-            slideshowManager.stop();
-            resetPlayPauseButton();
-
-            Timer t = new Timer(10, (e) -> {
-                controller.stop();
-                controller.setFullscreen(false);
-                controller.hideMediaPanel();
-                slideshowManager.stop();
-                resetPlayPauseButton();
-            });
-            t.setRepeats(false);
-            t.start();
-
+            EventBus.get().publish(new MediaViewStopEvent());
         });
 
         JToggleButton btnFullscreen = new JToggleButton("Vollbild");
-        btnFullscreen.addActionListener(a -> controller.setFullscreen(btnFullscreen.isSelected()));
+        btnFullscreen.addActionListener(a -> EventBus.get().publish(new MediaViewFullscreenEvent(btnFullscreen.isSelected())));
 
         add(H.makeHorizontalPanel(btnPlayPause, btnStop));
         add(H.makeHorizontalPanel( cbxAutostart, btnFullscreen));
@@ -115,7 +110,7 @@ public class ControlPanel extends JPanel {
     private void addRangeControls() {
         JButton btnSaveRange = new JButton("übernehmen");
         add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
-        add(H.makeHorizontalPanel(btnSaveRange, chxIgnoreTimerange));
+        add(H.makeHorizontalPanel(btnSaveRange, cbxIgnoreTimerange));
         btnSaveRange.addActionListener(a -> {
             try {
                 double start = Double.parseDouble(txtTimerangeStart.getText());
@@ -128,12 +123,17 @@ public class ControlPanel extends JPanel {
             }
         });
 
+        cbxIgnoreTimerange.addActionListener(l->{
+            AppState.get().setIgnoreTimerange(cbxIgnoreTimerange.isSelected());
+        });
+
     }
 
     private void addSliderPositionControl() {
         sldMoviePosition.addChangeListener(c -> {
             if (!isUpdatingFromCode && !sldMoviePosition.getValueIsAdjusting()) {
-                controller.setPlayPos((float) sldMoviePosition.getValue() / sldMoviePosition.getMaximum());
+                EventBus.get().publish(new CurrentPlaybackSliderPosEvent((float) sldMoviePosition.getValue() / (float)sldMoviePosition.getMaximum()));
+
             }
         });
         add(H.makeHorizontalPanel(new JLabel("Pos"), sldMoviePosition, lblPosition));
@@ -143,8 +143,7 @@ public class ControlPanel extends JPanel {
         lblVol = new JLabel("---");
         sldVolume = new JSlider();
         sldVolume.addChangeListener(l-> {
-            Controller.getInstance().getMediaView().setVolume(sldVolume.getValue());
-            VolumeHandler.getInstance().setVolumeForFile(currentFile.getAbsolutePath(), sldVolume.getValue());
+            VolumeHandler.getInstance().setVolumeForCurrentFile(sldVolume.getValue());
             lblVol.setText(""+sldVolume.getValue());
         });
         add(H.makeHorizontalPanel(new JLabel("Lautstärke"), sldVolume, lblVol));
@@ -220,10 +219,6 @@ public class ControlPanel extends JPanel {
 
     public boolean isAutostart() {
         return cbxAutostart.isSelected();
-    }
-
-    public boolean isIgnoreTimerange() {
-        return chxIgnoreTimerange.isSelected();
     }
 
     public void resetPlayPauseButton() {

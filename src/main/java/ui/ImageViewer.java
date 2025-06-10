@@ -15,9 +15,10 @@ public class ImageViewer {
     Controller controller = Controller.getInstance();
 
     public ImageViewer() {
-        controlPanel = new ControlPanel();
+
         thumbnailPanel = new ThumbnailPanel();
         mediaView = MediaView.getInstance();
+        controlPanel = new ControlPanel();
 
         controller.setControlPanel(controlPanel);
         controller.setThumbnailPanel(thumbnailPanel);

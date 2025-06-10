@@ -1,14 +1,13 @@
 package service;
 
+import event.VolumeChangedEvent;
+import model.AppState;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
 import java.io.*;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.HashMap;
-import java.util.Map;
 
 public class VolumeHandler {
 
@@ -28,9 +27,10 @@ public class VolumeHandler {
     public int getVolumeForFile(String path) {
         return data.optInt(path, 50); }
 
-    public void setVolumeForFile(String path, int volume) {
-        data.put(path, volume);
+    public void setVolumeForCurrentFile(int volume) {
+        data.put(AppState.get().getCurrentFile().getAbsolutePath(), volume);
         save();
+        EventBus.get().publish(new VolumeChangedEvent(volume));
     }
 
     private void load() {

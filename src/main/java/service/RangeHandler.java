@@ -1,5 +1,6 @@
 package service;
 
+import event.RangeChangedEvent;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -42,6 +43,8 @@ public class RangeHandler {
         }
 
         save();
+
+        EventBus.get().publish(new RangeChangedEvent(file));
 
         Controller.getInstance().invalidateThumbnailsForFile(file);
     }

@@ -37,7 +37,7 @@ public class Controller {
 
     public void handleDirectory(Path directory) {
         this.currentDirectory = directory;
-        storeDirectory(directory);
+        SettingsService.getIntance().storeDirectory(directory);
 
         File[] files = directory.toFile().listFiles();
         if (files == null) return;
@@ -71,30 +71,10 @@ public class Controller {
         mediaView.display(file, isDoubleClick ||controlPanel.isAutostart());
     }
 
-    public void playPause(boolean playing) {
-        if (playing) mediaView.play();
-        else mediaView.pause();
-    }
-
-    public void setFullscreen(boolean fullscreen) {
-        mediaView.fullscreen(fullscreen);
-    }
-
-    public void showCurrentPlayPosMillis(long millis, long total) {
-        controlPanel.setCurrentPlayPosMillis(millis, total);
-    }
-
-    public void setPlayPos(float pos) {
-        mediaView.setPlayPos(pos);
-    }
-
-    public boolean isIgnoreTimerange() {
-        return controlPanel.isIgnoreTimerange();
-    }
 
     public Executor getExecutor() { return executor; }
     public Path getCurrentDirectory() {
-        if (currentDirectory == null) currentDirectory = loadDirectory();
+        if (currentDirectory == null) currentDirectory = SettingsService.getIntance().loadDefaultDirectoryFromSettingsJson();
         return currentDirectory;
     }
 
@@ -102,28 +82,6 @@ public class Controller {
         controlPanel.setThumbnailsLoaded(loaded, total);
     }
 
-    private void storeDirectory(Path dir) {
-        JSONObject json = new JSONObject();
-        json.put("defaultDirectory", dir.toString());
-        try (FileWriter writer = new FileWriter(SETTINGS_FILE)) {
-            writer.write(json.toString(4));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
-    }
-
-    private Path loadDirectory() {
-        File file = new File(SETTINGS_FILE);
-        if (!file.exists()) return Paths.get(System.getProperty("user.home"));
-        try {
-            String content = new String(Files.readAllBytes(file.toPath()));
-            JSONObject json = new JSONObject(content);
-            return Paths.get(json.optString("defaultDirectory", System.getProperty("user.home")));
-        } catch (IOException e) {
-            e.printStackTrace();
-            return Paths.get(System.getProperty("user.home"));
-        }
-    }
 
     public static boolean isImageFile(File file) {
         String name = file.getName().toLowerCase();
@@ -181,21 +139,9 @@ public class Controller {
         return files;
     }
 
-    public void stop() {
-        mediaView.stop();
-    }
-
-    public void hideMediaPanel() {
-        mediaView.hideFrame();
-    }
-
     public void updateUntaggedCount() {
         List <File> untagged = TagHandler.getInstance().getUntaggedFiles();
         controlPanel.setUntaggedCount(untagged.size());
-    }
-
-    public MediaView getMediaView(){
-        return mediaView;
     }
 
     public void invalidateThumbnailsForFile(File file) {
@@ -203,7 +149,4 @@ public class Controller {
         reloadCurrentDirectory();
     }
 
-    public void setCurrentFileFromSlideShow(File file) {
-        controlPanel.setSelectedFile(file);
-    }
 }

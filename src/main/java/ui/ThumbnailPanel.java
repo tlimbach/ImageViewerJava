@@ -1,6 +1,10 @@
 package ui;
 
+import event.CurrentDirectoryChangedEvent;
+import event.RangeChangedEvent;
 import service.Controller;
+import service.EventBus;
+import service.MediaService;
 import service.RangeHandler;
 
 import javax.imageio.ImageIO;
@@ -23,7 +27,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int PREVIEW_IMAGE_WIDTH = THUMBNAIL_WIDTH;
     private final static int PREVIEW_IMAGE_HEIGHT = THUMBNAIL_HEIGHT;
 
-    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 140;
+    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 2;
     public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
     private JLabel selectedLabel = null;
@@ -44,6 +48,14 @@ public class ThumbnailPanel extends JPanel {
 
         add(scrollPane, BorderLayout.CENTER);
 
+        EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
+            List<File> files = MediaService.getInstance().loadFilesFromDirectory();
+            populate(files);
+        });
+
+        EventBus.get().register(RangeChangedEvent.class, e -> {
+            invalidateThumbnails(e.file());
+        });
 
     }
 
@@ -66,6 +78,7 @@ public class ThumbnailPanel extends JPanel {
 
     private long currentGenerationId = 0;
     int processed = 0;
+
     public void populate(List<File> mediaFiles) {
         long generation = ++currentGenerationId;
 
@@ -76,7 +89,7 @@ public class ThumbnailPanel extends JPanel {
         long now = System.currentTimeMillis();
         animatedThumbnails.forEach(AnimatedThumbnail::stop);
         animatedThumbnails.clear();
-        System.out.println("took " + (System.currentTimeMillis()-now));
+        System.out.println("took " + (System.currentTimeMillis() - now));
 
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
@@ -91,7 +104,7 @@ public class ThumbnailPanel extends JPanel {
                 Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
             } else if (Controller.isVideoFile(file)) {
                 CompletableFuture
-                        .supplyAsync(() -> loadThumbnails(file,  ANIMATION_FRAMES_PER_THUMBNAIL),
+                        .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
                                 Controller.getInstance().getExecutor())
                         .thenAccept(thumbFiles -> {
                             if (generation != currentGenerationId) return;
@@ -166,7 +179,7 @@ public class ThumbnailPanel extends JPanel {
 
                 if (e.getClickCount() == 1) {
                     Controller.getInstance().handleMedia(file, false);
-                }else if (e.getClickCount() == 2){
+                } else if (e.getClickCount() == 2) {
                     Controller.getInstance().handleMedia(file, true);
                 }
             }
@@ -196,8 +209,7 @@ public class ThumbnailPanel extends JPanel {
         aNail.filename = file.getName();
         animatedThumbnails.add(aNail);
 
-        if (animatedThumbnails.size()<20)
-        {
+        if (animatedThumbnails.size() < 20) {
             aNail.start();
         }
     }
@@ -239,13 +251,13 @@ public class ThumbnailPanel extends JPanel {
         RangeHandler.Range range = new RangeHandler().getRangeForFile(videoFile);
 
         if (range != null) {
-            millis = (int) (range.start*1000);
+            millis = (int) (range.start * 1000);
         }
 
         List<File> files = new ArrayList<>();
         for (int t = 0; t < count; t++) {
             File thumb = fetchVideoThumbnail(videoFile, millis);
-            if (thumb!=null) {
+            if (thumb != null) {
                 files.add(thumb);
             }
             millis += ANIMATION_DELAY_RECORD;
@@ -288,7 +300,7 @@ public class ThumbnailPanel extends JPanel {
                     "-ss", timestamp,
                     "-i", videoFile.getAbsolutePath(),
                     "-vframes", "1",
-                    "-vf", "scale='min(" + PREVIEW_IMAGE_WIDTH + "\\,iw)':min(" + PREVIEW_IMAGE_HEIGHT + "\\,ih):force_original_aspect_ratio=decrease,pad=" + PREVIEW_IMAGE_WIDTH + ":" + PREVIEW_IMAGE_HEIGHT +":(ow-iw)/2:(oh-ih)/2",
+                    "-vf", "scale='min(" + PREVIEW_IMAGE_WIDTH + "\\,iw)':min(" + PREVIEW_IMAGE_HEIGHT + "\\,ih):force_original_aspect_ratio=decrease,pad=" + PREVIEW_IMAGE_WIDTH + ":" + PREVIEW_IMAGE_HEIGHT + ":(ow-iw)/2:(oh-ih)/2",
                     file.getAbsolutePath()
             };
 
