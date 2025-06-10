@@ -1,6 +1,7 @@
 package service;
 
-import org.json.JSONObject;
+import event.CurrentlySelectedFileEvent;
+import model.AppState;
 import ui.AnimatedThumbnail;
 import ui.ControlPanel;
 import ui.MediaView;
@@ -18,25 +19,17 @@ public class Controller {
     private static final Controller instance = new Controller();
     public static Controller getInstance() { return instance; }
 
-    private final ExecutorService executor = Executors.newFixedThreadPool(2);
-    private final String SETTINGS_FILE = "settings.json";
-
     private ControlPanel controlPanel;
     private ThumbnailPanel thumbnailPanel;
     private MediaView mediaView;
 
     private List<File> mediaFiles = new ArrayList<>();
-    private Path currentDirectory;
 
     public void setControlPanel(ControlPanel cp) { this.controlPanel = cp; }
     public void setThumbnailPanel(ThumbnailPanel tp) { this.thumbnailPanel = tp; }
     public void setMediaPanel(MediaView mv) { this.mediaView = mv; }
 
-    private volatile boolean slideshowActive = false;
-    private Future<?> slideshowTask;
-
     public void handleDirectory(Path directory) {
-        this.currentDirectory = directory;
         SettingsService.getIntance().storeDirectory(directory);
 
         File[] files = directory.toFile().listFiles();
@@ -47,12 +40,11 @@ public class Controller {
                 .collect(Collectors.toList());
 
         thumbnailPanel.populate(mediaFiles);
+
+        List <File> untagged = TagHandler.getInstance().getUntaggedFiles();
+        controlPanel.setUntaggedCount(untagged.size());
     }
 
-    public void reloadCurrentDirectory() {
-        handleDirectory(currentDirectory);
-        updateUntaggedCount();
-    }
 
     public void setSelectedFiles(List<String> filePaths) {
         Runnable task = () -> {
@@ -67,19 +59,8 @@ public class Controller {
     }
 
     public void handleMedia(File file, boolean isDoubleClick) {
-        controlPanel.setSelectedFile(file);
+        EventBus.get().publish(new CurrentlySelectedFileEvent(file));
         mediaView.display(file, isDoubleClick ||controlPanel.isAutostart());
-    }
-
-
-    public Executor getExecutor() { return executor; }
-    public Path getCurrentDirectory() {
-        if (currentDirectory == null) currentDirectory = SettingsService.getIntance().loadDefaultDirectoryFromSettingsJson();
-        return currentDirectory;
-    }
-
-    public void setThumbnailsLoaded(int loaded, int total) {
-        controlPanel.setThumbnailsLoaded(loaded, total);
     }
 
 
@@ -103,50 +84,20 @@ public class Controller {
                 max / 1024.0 / 1024);
     }
 
-    public void tagsChanged() {
-        // Placeholder – implement as needed
-    }
-
-    public Path loadDefaultDirectoryFromSettingsJson() {
-        File file = new File("settings.json");
-        if (!file.exists()) return Paths.get(System.getProperty("user.home"));
-
-        try {
-            String content = new String(Files.readAllBytes(file.toPath()));
-            JSONObject json = new JSONObject(content);
-            String dirString = json.optString("defaultDirectory", System.getProperty("user.home"));
-            return Paths.get(dirString);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return Paths.get(System.getProperty("user.home"));
-        }
-    }
-
     public ControlPanel getControlPanel() {
         return controlPanel;
     }
-
 
     public List<File> getCurrentlyDisplayedFiles() {
         if (thumbnailPanel == null) return Collections.emptyList();
 
         List<File> files = new ArrayList<>();
         for (AnimatedThumbnail thumb : thumbnailPanel.animatedThumbnails) {
-            File file = new File(currentDirectory.toFile(), thumb.filename);
+            File file = new File(AppState.get().getCurrentDirectory().toFile(), thumb.filename);
             files.add(file);
         }
 
         return files;
-    }
-
-    public void updateUntaggedCount() {
-        List <File> untagged = TagHandler.getInstance().getUntaggedFiles();
-        controlPanel.setUntaggedCount(untagged.size());
-    }
-
-    public void invalidateThumbnailsForFile(File file) {
-        thumbnailPanel.invalidateThumbnails(file);
-        reloadCurrentDirectory();
     }
 
 }

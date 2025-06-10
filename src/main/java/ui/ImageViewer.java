@@ -1,6 +1,8 @@
 package ui;
 
+import model.AppState;
 import service.Controller;
+import service.SettingsService;
 
 import javax.swing.*;
 import java.awt.*;
@@ -42,8 +44,9 @@ public class ImageViewer {
 
         frame.setVisible(true);
 
-        Path def = controller.loadDefaultDirectoryFromSettingsJson();
+        Path def = SettingsService.getIntance().loadDefaultDirectoryFromSettingsJson();
+        AppState.get().setCurrentDirectory(def);
         controller.handleDirectory(def);
-        controller.updateUntaggedCount();
+
     }
 }

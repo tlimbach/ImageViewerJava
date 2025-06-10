@@ -46,7 +46,6 @@ public class RangeHandler {
 
         EventBus.get().publish(new RangeChangedEvent(file));
 
-        Controller.getInstance().invalidateThumbnailsForFile(file);
     }
 
     private void load() {

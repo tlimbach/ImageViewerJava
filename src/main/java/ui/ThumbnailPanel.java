@@ -2,6 +2,8 @@ package ui;
 
 import event.CurrentDirectoryChangedEvent;
 import event.RangeChangedEvent;
+import event.ThumbnailsLoadedEvent;
+import model.AppState;
 import service.Controller;
 import service.EventBus;
 import service.MediaService;
@@ -19,6 +21,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executors;
 
 public class ThumbnailPanel extends JPanel {
 
@@ -30,6 +33,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 2;
     public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
+    public static final int N_THREADS = 2;
     private JLabel selectedLabel = null;
 
     private final JScrollPane scrollPane;
@@ -55,6 +59,7 @@ public class ThumbnailPanel extends JPanel {
 
         EventBus.get().register(RangeChangedEvent.class, e -> {
             invalidateThumbnails(e.file());
+            Controller.getInstance().handleDirectory(AppState.get().getCurrentDirectory());
         });
 
     }
@@ -101,11 +106,11 @@ public class ThumbnailPanel extends JPanel {
             if (Controller.isImageFile(file)) {
                 addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.IMAGE, Collections.singletonList(file), file);
                 thumbnailsLoadedCount++;
-                Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
+                EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
             } else if (Controller.isVideoFile(file)) {
                 CompletableFuture
                         .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
-                                Controller.getInstance().getExecutor())
+                                Executors.newFixedThreadPool(N_THREADS))
                         .thenAccept(thumbFiles -> {
                             if (generation != currentGenerationId) return;
 
@@ -115,7 +120,7 @@ public class ThumbnailPanel extends JPanel {
                                     addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.VIDEO, thumbFiles, file);
                                     thumbnailsLoadedCount++;
 
-                                    Controller.getInstance().setThumbnailsLoaded(thumbnailsLoadedCount, mediaFiles.size());
+                                    EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
                                     updateVisibleThumbnails();  // sicherheitshalber
                                 });
                             }
@@ -155,7 +160,7 @@ public class ThumbnailPanel extends JPanel {
 
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
-                                Controller.getInstance().reloadCurrentDirectory();
+                                Controller.getInstance().handleDirectory(AppState.get().getCurrentDirectory());
                             } else {
                                 JOptionPane.showMessageDialog(label,
                                         "Datei konnte nicht gelöscht werden.",

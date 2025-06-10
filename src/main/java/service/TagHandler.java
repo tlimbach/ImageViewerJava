@@ -1,5 +1,6 @@
 package service;
 
+import model.AppState;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -68,11 +69,11 @@ public class TagHandler {
 
     public Map<String, Integer> allTags() {
         Map<String, Integer> tagCounts = new HashMap<>();
-        Path currentDir = Controller.getInstance().getCurrentDirectory();
+
 
         for (String key : tagData.keySet()) {
             Path filePath = Paths.get(key);
-            if (!filePath.getParent().equals(currentDir)) continue;
+            if (!filePath.getParent().equals(AppState.get().getCurrentDirectory())) continue;
 
             String tagString = tagData.optString(key, "");
             if (!tagString.isEmpty()) {
@@ -90,7 +91,7 @@ public class TagHandler {
         long t0 = System.nanoTime();
         if (selectedTags == null || selectedTags.isEmpty()) return Collections.emptyList();
 
-        Path currentDir = Controller.getInstance().getCurrentDirectory();
+
         List<String> matchingFiles = new ArrayList<>();
 
         for (String key : tagData.keySet()) {
@@ -99,7 +100,7 @@ public class TagHandler {
                 Set<String> fileTags = new HashSet<>(Arrays.asList(tagString.trim().split("\\s+")));
 
                 if (!Collections.disjoint(fileTags, selectedTags)) {
-                    if (Paths.get(key).getParent().equals(currentDir)) {
+                    if (Paths.get(key).getParent().equals(AppState.get().getCurrentDirectory())) {
                         matchingFiles.add(key);
                     }
                 }
@@ -112,7 +113,7 @@ public class TagHandler {
 
 
     public List<File> getUntaggedFiles() {
-        Path currentDir = Controller.getInstance().getCurrentDirectory();
+        Path currentDir = AppState.get().getCurrentDirectory();
         if (currentDir == null) return Collections.emptyList();
 
         File[] files = currentDir.toFile().listFiles((dir, name) -> {

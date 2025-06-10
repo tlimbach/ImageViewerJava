@@ -52,8 +52,12 @@ public class ControlPanel extends JPanel {
             setCurrentPlayPosMillis(e.currentMillis(), e.totalMinis());
         });
 
-        EventBus.get().register(SlideshowCurrentFile.class, e->{
+        EventBus.get().register(CurrentlySelectedFileEvent.class, e->{
             setSelectedFile(e.file());
+        });
+
+        EventBus.get().register(ThumbnailsLoadedEvent.class, e->{
+            setThumbnailsLoaded(e.loaded(), e.total());
         });
     }
 
