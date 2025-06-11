@@ -13,7 +13,13 @@ public class RangeHandler {
     private final String rangesFile = "video_ranges.json";
     private JSONObject rangeData;
 
-    public RangeHandler() {
+    private static RangeHandler rangeHandler = new RangeHandler();
+
+    public static RangeHandler getInstance() {
+        return rangeHandler;
+    }
+
+    private RangeHandler() {
         load();
     }
 

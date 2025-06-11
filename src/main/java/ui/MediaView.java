@@ -101,6 +101,10 @@ public class MediaView {
         EventBus.get().register(VolumeChangedEvent.class, e-> {
             setVolume(e.volume());
         });
+
+        EventBus.get().register(RangeChangedEvent.class, r-> {
+            range = RangeHandler.getInstance().getRangeForFile(currentFile);
+        });
     }
 
     private void initPlayerListener() {
@@ -150,7 +154,7 @@ public class MediaView {
 
         currentFile = file;
         stop();
-        range = new RangeHandler().getRangeForFile(file);
+        range = RangeHandler.getInstance().getRangeForFile(file);
 
         if (Controller.isImageFile(file)) {
             frame.setVisible(true);

@@ -25,12 +25,11 @@ public class ControlPanel extends JPanel {
     private final SlideshowManager slideshowManager = new SlideshowManager();
 
     private JLabel txtUntaggedCount;
-    private File currentFile;
 
     private JSlider sldVolume;
     private JLabel lblVol;
 
-     private  RangeHandler rangeHandler = new RangeHandler();
+    private RangeHandler rangeHandler = RangeHandler.getInstance();
     private TagSelectionPanel tagSelectionPanel;
     private TagEditDialog tagEditDialog;
 
@@ -48,15 +47,15 @@ public class ControlPanel extends JPanel {
 
         add(H.makeHorizontalPanel(lblThumbnailsLoadedCount));
 
-        EventBus.get().register(CurrentPlaybackPosEvent.class, e->{
+        EventBus.get().register(CurrentPlaybackPosEvent.class, e -> {
             setCurrentPlayPosMillis(e.currentMillis(), e.totalMinis());
         });
 
-        EventBus.get().register(CurrentlySelectedFileEvent.class, e->{
+        EventBus.get().register(CurrentlySelectedFileEvent.class, e -> {
             setSelectedFile(e.file());
         });
 
-        EventBus.get().register(ThumbnailsLoadedEvent.class, e->{
+        EventBus.get().register(ThumbnailsLoadedEvent.class, e -> {
             setThumbnailsLoaded(e.loaded(), e.total());
         });
     }
@@ -108,7 +107,7 @@ public class ControlPanel extends JPanel {
         btnFullscreen.addActionListener(a -> EventBus.get().publish(new MediaViewFullscreenEvent(btnFullscreen.isSelected())));
 
         add(H.makeHorizontalPanel(btnPlayPause, btnStop));
-        add(H.makeHorizontalPanel( cbxAutostart, btnFullscreen));
+        add(H.makeHorizontalPanel(cbxAutostart, btnFullscreen));
     }
 
     private void addRangeControls() {
@@ -119,15 +118,15 @@ public class ControlPanel extends JPanel {
             try {
                 double start = Double.parseDouble(txtTimerangeStart.getText());
                 double end = Double.parseDouble(txtTimerangeEnde.getText());
-                if (currentFile != null) {
-                    rangeHandler.setRangeForFile(start, end, currentFile);
+                if (AppState.get().getCurrentFile() != null) {
+                    rangeHandler.setRangeForFile(start, end, AppState.get().getCurrentFile());
                 }
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "Bitte gültige Zahlen für Start und Ende eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
             }
         });
 
-        cbxIgnoreTimerange.addActionListener(l->{
+        cbxIgnoreTimerange.addActionListener(l -> {
             AppState.get().setIgnoreTimerange(cbxIgnoreTimerange.isSelected());
         });
 
@@ -136,7 +135,7 @@ public class ControlPanel extends JPanel {
     private void addSliderPositionControl() {
         sldMoviePosition.addChangeListener(c -> {
             if (!isUpdatingFromCode && !sldMoviePosition.getValueIsAdjusting()) {
-                EventBus.get().publish(new CurrentPlaybackSliderPosEvent((float) sldMoviePosition.getValue() / (float)sldMoviePosition.getMaximum()));
+                EventBus.get().publish(new CurrentPlaybackSliderPosEvent((float) sldMoviePosition.getValue() / (float) sldMoviePosition.getMaximum()));
 
             }
         });
@@ -146,9 +145,9 @@ public class ControlPanel extends JPanel {
     private void addVolumeControl() {
         lblVol = new JLabel("---");
         sldVolume = new JSlider();
-        sldVolume.addChangeListener(l-> {
+        sldVolume.addChangeListener(l -> {
             VolumeHandler.getInstance().setVolumeForCurrentFile(sldVolume.getValue());
-            lblVol.setText(""+sldVolume.getValue());
+            lblVol.setText("" + sldVolume.getValue());
         });
         add(H.makeHorizontalPanel(new JLabel("Lautstärke"), sldVolume, lblVol));
     }
@@ -156,7 +155,7 @@ public class ControlPanel extends JPanel {
     private void addTagControls() {
         JButton btnShowUntagged = new JButton("Untagged anzeigen");
 
-        btnShowUntagged.addActionListener(a->{
+        btnShowUntagged.addActionListener(a -> {
             List<File> files = TagHandler.getInstance().getUntaggedFiles();
             Controller.getInstance().setSelectedFiles(files.stream().map(File::getAbsolutePath).toList());
         });
@@ -165,13 +164,13 @@ public class ControlPanel extends JPanel {
         JButton btnSetTags = new JButton("Tags setzen");
         btnSetTags.addActionListener(a -> {
 
-            if (currentFile != null) {
+            if (AppState.get().getCurrentFile() != null) {
                 tagEditDialog = new TagEditDialog();
-                tagEditDialog.setFile(currentFile, true);
+                tagEditDialog.setFile(AppState.get().getCurrentFile(), true);
             }
         });
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
-        cbxAutoOpenTagsDialog.addActionListener(l->{
+        cbxAutoOpenTagsDialog.addActionListener(l -> {
             AppState.get().setAutoOpenTagsDialog(cbxAutoOpenTagsDialog.isSelected());
         });
 
@@ -202,9 +201,9 @@ public class ControlPanel extends JPanel {
     }
 
     public void setSelectedFile(File file) {
-        currentFile = file;
+        AppState.get().setCurrentFile(file);
         if (tagEditDialog != null) {
-            tagEditDialog.setFile(currentFile, false);
+            tagEditDialog.setFile(AppState.get().getCurrentFile(), false);
         }
         RangeHandler.Range range = rangeHandler.getRangeForFile(file);
         SwingUtilities.invokeLater(() -> {
@@ -217,8 +216,8 @@ public class ControlPanel extends JPanel {
             }
         });
         int vol = VolumeHandler.getInstance().getVolumeForFile(file.getAbsolutePath());
-        SwingUtilities.invokeLater(()->{
-            lblVol.setText(""+vol);
+        SwingUtilities.invokeLater(() -> {
+            lblVol.setText("" + vol);
             sldVolume.setValue(vol);
         });
 
@@ -237,7 +236,7 @@ public class ControlPanel extends JPanel {
     }
 
     public void setUntaggedCount(int size) {
-        txtUntaggedCount.setText("("+size+")");
+        txtUntaggedCount.setText("(" + size + ")");
     }
 
     public void reloadTagSelectinPanel() {

@@ -30,7 +30,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int PREVIEW_IMAGE_WIDTH = THUMBNAIL_WIDTH;
     private final static int PREVIEW_IMAGE_HEIGHT = THUMBNAIL_HEIGHT;
 
-    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 30;
+    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 50;
     public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
     public static final int N_THREADS = 2;
@@ -59,9 +59,27 @@ public class ThumbnailPanel extends JPanel {
 
         EventBus.get().register(RangeChangedEvent.class, e -> {
             invalidateThumbnails(e.file());
-            Controller.getInstance().handleDirectory(AppState.get().getCurrentDirectory());
-        });
 
+            AnimatedThumbnail match = animatedThumbnails.stream()
+                    .filter(a -> a.filename.equals(e.file().getName()))
+                    .findFirst()
+                    .orElse(null);
+
+            if (match != null) {
+                CompletableFuture
+                        .supplyAsync(() -> loadThumbnails(e.file(), ANIMATION_FRAMES_PER_THUMBNAIL),
+                                Controller.getInstance().getExecutorService())
+                        .thenAccept(thumbFiles -> {
+                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                                SwingUtilities.invokeLater(() -> {
+                                    match.stop();                    // alte Animation stoppen
+                                    match.imageFiles = thumbFiles;   // neue Frames setzen
+                                    match.start();                   // Animation wieder starten
+                                });
+                            }
+                        });
+            }
+        });
     }
 
     void updateVisibleThumbnails() {
@@ -255,7 +273,7 @@ public class ThumbnailPanel extends JPanel {
 
     private List<File> loadThumbnails(File videoFile, int count) {
         int millis = 0;
-        RangeHandler.Range range = new RangeHandler().getRangeForFile(videoFile);
+        RangeHandler.Range range = RangeHandler.getInstance().getRangeForFile(videoFile);
 
         if (range != null) {
             millis = (int) (range.start * 1000);
