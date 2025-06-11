@@ -18,6 +18,9 @@ public class ImageViewer {
 
     public ImageViewer() {
 
+        Path def = SettingsService.getIntance().loadDefaultDirectoryFromSettingsJson();
+        AppState.get().setCurrentDirectory(def);
+
         thumbnailPanel = new ThumbnailPanel();
         mediaView = MediaView.getInstance();
         controlPanel = new ControlPanel();
@@ -44,8 +47,7 @@ public class ImageViewer {
 
         frame.setVisible(true);
 
-        Path def = SettingsService.getIntance().loadDefaultDirectoryFromSettingsJson();
-        AppState.get().setCurrentDirectory(def);
+
         controller.handleDirectory(def);
 
     }

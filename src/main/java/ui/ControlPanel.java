@@ -167,10 +167,13 @@ public class ControlPanel extends JPanel {
 
             if (currentFile != null) {
                 tagEditDialog = new TagEditDialog();
-                tagEditDialog.setFile(currentFile);
+                tagEditDialog.setFile(currentFile, true);
             }
         });
         JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
+        cbxAutoOpenTagsDialog.addActionListener(l->{
+            AppState.get().setAutoOpenTagsDialog(cbxAutoOpenTagsDialog.isSelected());
+        });
 
         add(H.makeHorizontalPanel(btnShowUntagged, txtUntaggedCount));
         add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
@@ -201,7 +204,7 @@ public class ControlPanel extends JPanel {
     public void setSelectedFile(File file) {
         currentFile = file;
         if (tagEditDialog != null) {
-            tagEditDialog.setFile(currentFile);
+            tagEditDialog.setFile(currentFile, false);
         }
         RangeHandler.Range range = rangeHandler.getRangeForFile(file);
         SwingUtilities.invokeLater(() -> {

@@ -30,7 +30,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int PREVIEW_IMAGE_WIDTH = THUMBNAIL_WIDTH;
     private final static int PREVIEW_IMAGE_HEIGHT = THUMBNAIL_HEIGHT;
 
-    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 2;
+    private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 30;
     public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
     public static final int N_THREADS = 2;
@@ -110,7 +110,7 @@ public class ThumbnailPanel extends JPanel {
             } else if (Controller.isVideoFile(file)) {
                 CompletableFuture
                         .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
-                                Executors.newFixedThreadPool(N_THREADS))
+                                Controller.getInstance().getExecutorService())
                         .thenAccept(thumbFiles -> {
                             if (generation != currentGenerationId) return;
 
@@ -183,8 +183,10 @@ public class ThumbnailPanel extends JPanel {
                 selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
 
                 if (e.getClickCount() == 1) {
+                    AppState.get().setCurrentFile(file);
                     Controller.getInstance().handleMedia(file, false);
                 } else if (e.getClickCount() == 2) {
+                    AppState.get().setCurrentFile(file);
                     Controller.getInstance().handleMedia(file, true);
                 }
             }

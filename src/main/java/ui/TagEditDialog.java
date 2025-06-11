@@ -1,5 +1,6 @@
 package ui;
 
+import model.AppState;
 import service.Controller;
 import service.TagHandler;
 
@@ -48,10 +49,12 @@ public class TagEditDialog extends JDialog {
         setLocationRelativeTo(null);
     }
 
-    public void setFile(File file) {
+    public void setFile(File file, boolean forceShow) {
         this.file = file;
         updateContent();
-        setVisible(true); // erst jetzt anzeigen
+
+        if (forceShow || AppState.get().isAutoOpenTagsDialog())
+        setVisible(true);
     }
 
     private void updateContent() {

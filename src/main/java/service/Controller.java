@@ -17,6 +17,8 @@ import java.util.stream.Collectors;
 public class Controller {
 
     private static final Controller instance = new Controller();
+    private final ExecutorService ex;
+
     public static Controller getInstance() { return instance; }
 
     private ControlPanel controlPanel;
@@ -24,6 +26,15 @@ public class Controller {
     private MediaView mediaView;
 
     private List<File> mediaFiles = new ArrayList<>();
+
+    public ExecutorService getExecutorService() {
+        return ex;
+    }
+
+    private Controller(){
+        ex = Executors.newFixedThreadPool(4);
+    }
+
 
     public void setControlPanel(ControlPanel cp) { this.controlPanel = cp; }
     public void setThumbnailPanel(ThumbnailPanel tp) { this.thumbnailPanel = tp; }

@@ -19,4 +19,6 @@ public class AppState {
 
    private boolean isIgnoreTimerange;
 
+   private boolean autoOpenTagsDialog;
+
 }
