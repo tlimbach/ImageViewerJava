@@ -33,7 +33,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int ANIMATION_FRAMES_PER_THUMBNAIL = 50;
     public final static int ANIMATION_DELAY_PLAYBACK = (int) (33 * 2.5);
     private final static int ANIMATION_DELAY_RECORD = 33;
-    public static final int N_THREADS = 2;
+    public static final int N_THREADS = 4;
     private JLabel selectedLabel = null;
 
     private final JScrollPane scrollPane;
