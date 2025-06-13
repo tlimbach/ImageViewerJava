@@ -6,11 +6,11 @@ import java.awt.image.BufferedImage;
 
 public class AnimatedImagePanel extends JPanel {
     // ------------------ STELLSCHRAUBEN ------------------
-    private static final double BASE_SCALE_MULTIPLIER = 2.0;     // Basisvergrößerung über die Zielgröße hinaus
-    private static final double MAX_ZOOM_VARIATION = 0.15;       // Zoomschwankung (z. B. 0.15 = ±15%)
-    private static final double ZOOM_SPEED = 0.01;              // Geschwindigkeit des Zooms
-    private static final double PAN_SPEED_X = 0.002;             // Geschwindigkeit horizontales Schwenken
-    private static final double PAN_SPEED_Y = 0.002;             // Geschwindigkeit vertikales Schwenken
+    private static final double BASE_SCALE_MULTIPLIER = 1.8;     // Basisvergrößerung über die Zielgröße hinaus
+    private static final double MAX_ZOOM_VARIATION = -0.1;       // Zoomschwankung (z. B. 0.15 = ±15%)
+    private static final double ZOOM_SPEED = 0.008;              // Geschwindigkeit des Zooms
+    private static final double PAN_SPEED_X = 0.0035;             // Geschwindigkeit horizontales Schwenken
+    private static final double PAN_SPEED_Y = 0.0035;             // Geschwindigkeit vertikales Schwenken
 
     // ------------------ INSTANZVARIABLEN ------------------
     private final BufferedImage image;
