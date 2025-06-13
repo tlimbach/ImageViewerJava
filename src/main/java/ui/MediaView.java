@@ -174,7 +174,7 @@ public class MediaView {
         int newWidth = (int) (image.getWidth(null) * scale);
         int newHeight = (int) (image.getHeight(null) * scale);
 
-        if (!Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
+        if (Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
 
             for (Component comp : stackPanel.getComponents()) {
                 if (comp instanceof AnimatedImagePanel) {
