@@ -174,8 +174,22 @@ public class MediaView {
         int newWidth = (int) (image.getWidth(null) * scale);
         int newHeight = (int) (image.getHeight(null) * scale);
 
-        imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
-        cardLayout.show(stackPanel, "image");
+        if (!Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
+
+            for (Component comp : stackPanel.getComponents()) {
+                if (comp instanceof AnimatedImagePanel) {
+                    stackPanel.remove(comp);
+                    break;
+                }
+            }
+
+            AnimatedImagePanel animatedPanel = new AnimatedImagePanel(image, newWidth, newHeight);
+            stackPanel.add(animatedPanel, "animated");
+            cardLayout.show(stackPanel, "animated");
+        }else {
+            imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
+            cardLayout.show(stackPanel, "image");
+        }
 
         if (Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
             leftBar.start(Controller.getInstance().getControlPanel().getSlideshowManager().getDurationMillis());
