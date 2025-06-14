@@ -1,7 +1,9 @@
 package ui;
 
+import event.CurrentDirectoryChangedEvent;
 import model.AppState;
 import service.Controller;
+import service.EventBus;
 import service.SettingsService;
 
 import javax.swing.*;
@@ -47,7 +49,11 @@ public class ImageViewer {
 
         frame.setVisible(true);
 
+        EventBus.get().register(CurrentDirectoryChangedEvent.class, c->{
+            frame.setTitle("Image Viewer - " + AppState.get().getCurrentDirectory());
+        });
 
+        frame.setTitle("Image Viewer - " + def);
         controller.handleDirectory(def);
 
     }
