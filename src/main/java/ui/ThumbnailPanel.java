@@ -7,9 +7,7 @@ import service.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.awt.event.MouseListener;
+import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -37,9 +35,11 @@ public class ThumbnailPanel extends JPanel {
 
     private volatile File currentHoverFile;
     private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
+    private JLabel myLabel;
 
 
     public ThumbnailPanel() {
+
 
         mouseListener = createMousListener();
 
@@ -98,6 +98,66 @@ public class ThumbnailPanel extends JPanel {
                 }
             });
         });
+
+        EventBus.get().register(UserKeyboardEvent.class, e -> {
+
+            String direction = e.direction();
+
+            if (myLabel == null) return;  // Falls noch nie eins geklickt
+
+            // Aktuellen Index suchen
+            int index = -1;
+            for (int i = 0; i < animatedThumbnails.size(); i++) {
+                if (animatedThumbnails.get(i).label == myLabel) {
+                    index = i;
+                    break;
+                }
+            }
+
+            int nextIndex = index; // Default: unverändert
+
+            switch (direction) {
+                case "RIGHT":
+                    if (index != -1 && index + 1 < animatedThumbnails.size()) {
+                        nextIndex = index + 1;
+                    }
+                    break;
+                case "LEFT":
+                    if (index > 0) {
+                        nextIndex = index - 1;
+                    }
+                    break;
+                case "UP":
+                    if (index - 3 >= 0) {
+                        nextIndex = index - 3;
+                    }
+                    break;
+                case "DOWN":
+                    if (index + 3 < animatedThumbnails.size()) {
+                        nextIndex = index + 3;
+                    }
+                    break;
+            }
+
+            if (nextIndex != index) {
+                JLabel next = animatedThumbnails.get(nextIndex).label;
+
+                if (selectedLabel != null) {
+                    selectedLabel.setBorder(null);
+                }
+
+                selectedLabel = next;
+                selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+                selectedLabel.scrollRectToVisible(selectedLabel.getBounds());
+
+                File file = (File) next.getClientProperty("file");
+                AppState.get().setCurrentFile(file);
+                Controller.getInstance().handleMedia(file, false);
+
+                myLabel = next;
+            }
+
+        });
     }
 
     private MouseAdapter createMousListener() {
@@ -105,6 +165,7 @@ public class ThumbnailPanel extends JPanel {
             @Override
             public void mousePressed(MouseEvent e) {
                 JLabel label = (JLabel) e.getSource();
+                myLabel = label;
                 File file = (File) label.getClientProperty("file");
 
                 if (SwingUtilities.isRightMouseButton(e)) {
@@ -196,8 +257,43 @@ public class ThumbnailPanel extends JPanel {
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
 
+        newGridPanel.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                super.keyPressed(e);
+                H.out("new pressed :" + e.getKeyCode());
+            }
+
+            @Override
+            public void keyReleased(KeyEvent e) {
+                super.keyReleased(e);
+                H.out("jdoiwjdiojwoid");
+            }
+
+            @Override
+            public void keyTyped(KeyEvent e) {
+                super.keyTyped(e);
+                H.out("oidjwoidjwoid");
+            }
+        });
+
+
         // Viewport-Listener an neuen Panel binden
         scrollPane.setViewportView(newGridPanel);
+        scrollPane.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                super.keyPressed(e);
+                H.out("new pressed :" + e.getKeyCode());
+            }
+
+            @Override
+            public void keyTyped(KeyEvent e) {
+                super.keyTyped(e);
+                H.out("oidjwoidjwoid");
+            }
+        });
+
 
         for (File file : mediaFiles) {
 
@@ -237,6 +333,22 @@ public class ThumbnailPanel extends JPanel {
         label.setBackground(Color.DARK_GRAY);
         label.putClientProperty("file", file);
         label.addMouseListener(mouseListener);
+
+
+        label.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                super.keyPressed(e);
+                H.out("new pressed :" + e.getKeyCode());
+            }
+
+            @Override
+            public void keyTyped(KeyEvent e) {
+                super.keyTyped(e);
+                H.out("oidjwoidjwoid");
+            }
+        });
+
 
         label.addMouseListener(new MouseAdapter() {
             @Override

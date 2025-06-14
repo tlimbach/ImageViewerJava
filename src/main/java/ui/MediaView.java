@@ -13,6 +13,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -60,6 +61,17 @@ public class MediaView {
                     RotationHandler.getInstance().setRotation(currentFile, rot - 90);
                 } else if (e.getKeyChar() == 'r') {
                     RotationHandler.getInstance().setRotation(currentFile, rot + 90);
+                }
+
+                // ChatGPT: hier bitte anstelle 'b' entsprechenden Code für die Cursortasten sezten
+                if (e.getKeyCode() == KeyEvent.VK_LEFT) {
+                    EventBus.get().publish(new UserKeyboardEvent("LEFT"));
+                } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
+                    EventBus.get().publish(new UserKeyboardEvent("RIGHT"));
+                } else if (e.getKeyCode() == KeyEvent.VK_UP) {
+                    EventBus.get().publish(new UserKeyboardEvent("UP"));
+                } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
+                    EventBus.get().publish(new UserKeyboardEvent("DOWN"));
                 }
             }
         });
