@@ -5,7 +5,9 @@ import model.AppState;
 import service.*;
 
 import javax.swing.*;
+import java.awt.*;
 import java.io.File;
+import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 
@@ -59,22 +61,40 @@ public class ControlPanel extends JPanel {
         EventBus.get().register(ThumbnailsLoadedEvent.class, e -> {
             setThumbnailsLoaded(e.loaded(), e.total());
         });
+
+        EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
+            updateUntaggedFilesCount();
+            tagSelectionPanel.revalidateTags();
+        });
+
+        EventBus.get().register(TagsChangedEvent.class, e->{
+            updateUntaggedFilesCount();
+            tagSelectionPanel.revalidateTags();
+        });
+
+        updateUntaggedFilesCount();
+
     }
 
     private void addFileChooserButton() {
         JButton btnFileChooser = new JButton("Verzeichnis wählen");
-
-        // Label für Live-Info
         JLabel lblInfo = new JLabel("Noch nichts gewählt");
 
         btnFileChooser.addActionListener(a -> {
-            JFileChooser chooser = new JFileChooser();
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 
-            // Label oben im Chooser anzeigen:
+
+            EventBus.get().publish(new MediaViewStopEvent());
+            new Timer(10, e -> EventBus.get().publish(new MediaViewStopEvent())) {{
+                setRepeats(false);
+                start();
+            }};
+
+
+            JFileChooser chooser = new JFileChooser();
+            chooser.setPreferredSize(new Dimension(800, 600));
+            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
             chooser.setAccessory(lblInfo);
 
-            // Live-Analyse bei Auswahlwechsel:
             chooser.addPropertyChangeListener(evt -> {
                 if (JFileChooser.DIRECTORY_CHANGED_PROPERTY.equals(evt.getPropertyName())
                         || JFileChooser.SELECTED_FILE_CHANGED_PROPERTY.equals(evt.getPropertyName())) {
@@ -83,8 +103,7 @@ public class ControlPanel extends JPanel {
                         File[] files = selected.listFiles();
                         int imageCount = (int) Arrays.stream(files).filter(Controller::isImageFile).count();
                         int videoCount = (int) Arrays.stream(files).filter(Controller::isVideoFile).count();
-
-                        lblInfo.setText("<html><br>Bilder: " + imageCount + "<br>Videos: "+ videoCount + "</html>");
+                        lblInfo.setText("<html><br>Bilder: " + imageCount + "<br>Videos: " + videoCount + "</html>");
                     } else {
                         lblInfo.setText("Ungültige Auswahl");
                     }
@@ -95,9 +114,27 @@ public class ControlPanel extends JPanel {
                 chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().getParent().toFile());
             }
 
-            if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
-                MediaService.getInstance().setDirectory(chooser.getSelectedFile().toPath());
-            }
+
+            JDialog dialog = new JDialog((Frame) null, "Verzeichnis wählen", true);
+            dialog.getContentPane().add(chooser);
+            dialog.setSize(800, 600);
+            dialog.setLocationRelativeTo(null);
+
+            // OK und Abbrechen Buttons selbst machen
+            chooser.addActionListener(e -> {
+                if (JFileChooser.APPROVE_SELECTION.equals(e.getActionCommand())) {
+                    Path directory = chooser.getSelectedFile().toPath();
+                    AppState.get().setCurrentDirectory(directory);
+                    EventBus.get().publish(new CurrentDirectoryChangedEvent());
+                    dialog.dispose();
+                } else if (JFileChooser.CANCEL_SELECTION.equals(e.getActionCommand())) {
+                    dialog.dispose();
+                }
+            });
+
+            dialog.setVisible(true);
+            dialog.setModal(false);
+            dialog.toFront();
         });
 
         add(H.makeHorizontalPanel(btnFileChooser));
@@ -196,7 +233,9 @@ public class ControlPanel extends JPanel {
         btnSetTags.addActionListener(a -> {
 
             if (AppState.get().getCurrentFile() != null) {
-                tagEditDialog = new TagEditDialog();
+                if (tagEditDialog == null)
+                    tagEditDialog = new TagEditDialog();
+
                 tagEditDialog.setFile(AppState.get().getCurrentFile(), true);
             }
         });
@@ -266,11 +305,10 @@ public class ControlPanel extends JPanel {
         return slideshowManager;
     }
 
-    public void setUntaggedCount(int size) {
-        txtUntaggedCount.setText("(" + size + ")");
+    private void updateUntaggedFilesCount() {
+        List<File> untagged = TagHandler.getInstance().getUntaggedFiles();
+        txtUntaggedCount.setText("(" + untagged.size() + ")");
     }
 
-    public void reloadTagSelectinPanel() {
-        tagSelectionPanel.revalidateTags();
-    }
+
 }

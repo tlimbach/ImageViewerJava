@@ -35,7 +35,7 @@ public class ThumbnailPanel extends JPanel {
 
     private final JScrollPane scrollPane;
 
-private MouseListener mouseListener;
+    private MouseListener mouseListener;
     private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
 
 
@@ -54,7 +54,7 @@ private MouseListener mouseListener;
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
             List<File> files = MediaService.getInstance().loadFilesFromDirectory();
-            Controller.getInstance().getExecutorService().submit(()->populate(files));
+            Controller.getInstance().getExecutorService().submit(() -> populate(files));
         });
 
         EventBus.get().register(RangeChangedEvent.class, e -> {
@@ -103,7 +103,7 @@ private MouseListener mouseListener;
 
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
-                                Controller.getInstance().handleDirectory(AppState.get().getCurrentDirectory());
+                                reloadDirectory();
                             } else {
                                 JOptionPane.showMessageDialog(label,
                                         "Datei konnte nicht gelöscht werden.",
@@ -134,6 +134,11 @@ private MouseListener mouseListener;
                 }
             }
         };
+    }
+
+    public void reloadDirectory() {
+        List<File> mediaFiles = MediaService.getInstance().loadFilesFromDirectory();
+        populate(mediaFiles);
     }
 
     void updateVisibleThumbnails() {
@@ -214,13 +219,18 @@ private MouseListener mouseListener;
         label.putClientProperty("file", file);
         label.addMouseListener(mouseListener);
 
-        panel.add(label);
+        boolean imagedOK = true;
 
         if (type == MEDIA_TYPE.IMAGE) {
             try {
                 BufferedImage original = ImageIO.read(file);
-                Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
-                label.setIcon(new ImageIcon(scaled));
+                if (original == null) {
+                    H.out("Problems reain " + file.getAbsoluteFile().toPath());
+                   return;
+                } else {
+                    Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+                    label.setIcon(new ImageIcon(scaled));
+                }
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -229,17 +239,21 @@ private MouseListener mouseListener;
             label.setIcon(new ImageIcon(image));
         }
 
-        AnimatedThumbnail aNail = new AnimatedThumbnail();
-        aNail.imageFiles = thumbnailFiles;
-        aNail.animationTimer = null;
-        aNail.label = label;
-        aNail.isRunning = false;
-        aNail.type = type;
-        aNail.filename = file.getName();
-        animatedThumbnails.add(aNail);
+        if (imagedOK) {
+            panel.add(label);
 
-        if (animatedThumbnails.size() < 20) {
-            aNail.start();
+            AnimatedThumbnail aNail = new AnimatedThumbnail();
+            aNail.imageFiles = thumbnailFiles;
+            aNail.animationTimer = null;
+            aNail.label = label;
+            aNail.isRunning = false;
+            aNail.type = type;
+            aNail.filename = file.getName();
+            animatedThumbnails.add(aNail);
+
+            if (animatedThumbnails.size() < 20) {
+                aNail.start();
+            }
         }
     }
 

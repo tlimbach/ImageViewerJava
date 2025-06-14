@@ -1,5 +1,7 @@
 package service;
 
+import event.CurrentDirectoryChangedEvent;
+import model.AppState;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -12,8 +14,10 @@ import java.nio.file.Paths;
 public class SettingsService {
     private static SettingsService instance = new SettingsService();
 
-    private  SettingsService() {
-
+    private SettingsService() {
+        EventBus.get().register(CurrentDirectoryChangedEvent.class, c -> {
+            storeDirectory(AppState.get().getCurrentDirectory());
+        });
     }
 
     public static SettingsService getIntance() {

@@ -89,7 +89,7 @@ public class TagHandler {
 
     public List<String> getFilesForSelectedTags(List<String> selectedTags) {
         long t0 = System.nanoTime();
-        if (selectedTags == null || selectedTags.isEmpty()) return Collections.emptyList();
+        if (selectedTags == null || selectedTags.isEmpty()) return null;
 
 
         List<String> matchingFiles = new ArrayList<>();

@@ -53,8 +53,8 @@ public class ImageViewer {
             frame.setTitle("Image Viewer - " + AppState.get().getCurrentDirectory());
         });
 
-        frame.setTitle("Image Viewer - " + def);
-        controller.handleDirectory(def);
+
+        thumbnailPanel.reloadDirectory();
 
     }
 }

@@ -28,8 +28,6 @@ public class TagSelectionPanel extends JPanel {
         scrollPane.setPreferredSize(new Dimension(200, 300)); // anpassbar
 
         add(scrollPane, BorderLayout.CENTER);
-
-
         setTags(handler.allTags());
     }
 

@@ -20,11 +20,7 @@ public class MediaService {
         return mediaService;
     }
 
-    public void setDirectory(Path directory) {
-        AppState.get().setCurrentDirectory(directory);
-        SettingsService.getIntance().storeDirectory(directory);
-        EventBus.get().publish(new CurrentDirectoryChangedEvent());
-    }
+
 
     public List<File> loadFilesFromDirectory(){
         File[] files = AppState.get().getCurrentDirectory().toFile().listFiles();

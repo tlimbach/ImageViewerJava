@@ -19,7 +19,9 @@ public class Controller {
     private static final Controller instance = new Controller();
     private final ExecutorService ex;
 
-    public static Controller getInstance() { return instance; }
+    public static Controller getInstance() {
+        return instance;
+    }
 
     private ControlPanel controlPanel;
     private ThumbnailPanel thumbnailPanel;
@@ -31,38 +33,37 @@ public class Controller {
         return ex;
     }
 
-    private Controller(){
+    private Controller() {
         ex = Executors.newFixedThreadPool(2);
     }
 
 
-    public void setControlPanel(ControlPanel cp) { this.controlPanel = cp; }
-    public void setThumbnailPanel(ThumbnailPanel tp) { this.thumbnailPanel = tp; }
-    public void setMediaPanel(MediaView mv) { this.mediaView = mv; }
-
-    public void handleDirectory(Path directory) {
-        SettingsService.getIntance().storeDirectory(directory);
-
-        File[] files = directory.toFile().listFiles();
-        if (files == null) return;
-
-        mediaFiles = Arrays.stream(files)
-                .filter(f -> isImageFile(f) || isVideoFile(f))
-                .collect(Collectors.toList());
-
-        thumbnailPanel.populate(mediaFiles);
-
-        List <File> untagged = TagHandler.getInstance().getUntaggedFiles();
-        controlPanel.setUntaggedCount(untagged.size());
+    public void setControlPanel(ControlPanel cp) {
+        this.controlPanel = cp;
     }
 
+    public void setThumbnailPanel(ThumbnailPanel tp) {
+        this.thumbnailPanel = tp;
+    }
+
+    public void setMediaPanel(MediaView mv) {
+        this.mediaView = mv;
+    }
 
     public void setSelectedFiles(List<String> filePaths) {
+
         Runnable task = () -> {
+            if (filePaths == null) {
+                thumbnailPanel.reloadDirectory();
+                return;
+            }
             List<File> files = filePaths.isEmpty()
                     ? mediaFiles
                     : filePaths.stream().map(File::new).collect(Collectors.toList());
+
+
             thumbnailPanel.populate(files);
+
         };
 
         if (SwingUtilities.isEventDispatchThread()) new Thread(task).start();
@@ -71,7 +72,7 @@ public class Controller {
 
     public void handleMedia(File file, boolean isDoubleClick) {
         EventBus.get().publish(new CurrentlySelectedFileEvent(file));
-        mediaView.display(file, isDoubleClick ||controlPanel.isAutostart());
+        mediaView.display(file, isDoubleClick || controlPanel.isAutostart());
     }
 
 

@@ -1,7 +1,9 @@
 package ui;
 
+import event.TagsChangedEvent;
 import model.AppState;
 import service.Controller;
+import service.EventBus;
 import service.TagHandler;
 
 import javax.swing.*;
@@ -20,10 +22,10 @@ public class TagEditDialog extends JDialog {
     private final JPanel centerPanel = new JPanel(new BorderLayout());
 
     public TagEditDialog() {
-        super((Frame) null, "Tags bearbeiten", false); // <- nicht modal!
+        super((Frame) null, "Tags bearbeiten", false);
 
         setLayout(new BorderLayout(10, 10));
-        setDefaultCloseOperation(HIDE_ON_CLOSE); // nicht DISPOSE_ON_CLOSE
+        setDefaultCloseOperation(HIDE_ON_CLOSE);
 
         tagsPanel.setLayout(new BoxLayout(tagsPanel, BoxLayout.Y_AXIS));
         tagsPanel.setBorder(BorderFactory.createTitledBorder("Existierende Tags"));
@@ -53,8 +55,10 @@ public class TagEditDialog extends JDialog {
         this.file = file;
         updateContent();
 
-        if (forceShow || AppState.get().isAutoOpenTagsDialog())
-        setVisible(true);
+        if (forceShow || AppState.get().isAutoOpenTagsDialog()) {
+            setVisible(true);
+            toFront();
+        }
     }
 
     private void updateContent() {
@@ -68,6 +72,7 @@ public class TagEditDialog extends JDialog {
 
         for (String tag : allTags) {
             JCheckBox box = new JCheckBox(tag);
+            box.addActionListener(a->saveTags());
             box.setSelected(currentTags.contains(tag));
             checkBoxes.add(box);
             tagsPanel.add(box);
@@ -91,6 +96,6 @@ public class TagEditDialog extends JDialog {
         String joined = String.join(" ", selectedTags);
         TagHandler.getInstance().setTagsToFile(joined, file.getAbsolutePath());
 
-        Controller.getInstance().getControlPanel().reloadTagSelectinPanel();
+        EventBus.get().publish(new TagsChangedEvent());
     }
 }
