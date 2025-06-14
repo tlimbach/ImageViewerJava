@@ -139,6 +139,7 @@ public class ThumbnailPanel extends JPanel {
                     break;
             }
 
+
             if (nextIndex != index) {
                 JLabel next = animatedThumbnails.get(nextIndex).label;
 
@@ -148,14 +149,27 @@ public class ThumbnailPanel extends JPanel {
 
                 selectedLabel = next;
                 selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
-                selectedLabel.scrollRectToVisible(selectedLabel.getBounds());
 
                 File file = (File) next.getClientProperty("file");
                 AppState.get().setCurrentFile(file);
                 Controller.getInstance().handleMedia(file, false);
 
-                myLabel = next;
+                myLabel = selectedLabel;
+
+                // 🔑 Nur das, korrekt:
+                Rectangle r = selectedLabel.getBounds();
+                Rectangle viewRect = SwingUtilities.convertRectangle(
+                        selectedLabel.getParent(), r, scrollPane.getViewport());
+                scrollPane.getViewport().scrollRectToVisible(viewRect);
+
+
             }
+            Rectangle r = myLabel.getBounds();
+            Rectangle viewRect = SwingUtilities.convertRectangle(myLabel.getParent(), r, scrollPane.getViewport());
+            viewRect.y = Math.max(viewRect.y - 50, 0);
+            viewRect.height += 100;
+            scrollPane.scrollRectToVisible(viewRect);
+
 
         });
     }
