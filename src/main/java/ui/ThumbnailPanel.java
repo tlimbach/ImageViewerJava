@@ -36,6 +36,8 @@ public class ThumbnailPanel extends JPanel {
     private final JScrollPane scrollPane;
 
     private MouseListener mouseListener;
+
+    private volatile File currentHoverFile;
     private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
 
 
@@ -219,6 +221,35 @@ public class ThumbnailPanel extends JPanel {
         label.putClientProperty("file", file);
         label.addMouseListener(mouseListener);
 
+        label.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+
+                if (type == MEDIA_TYPE.IMAGE) {
+                    currentHoverFile = file;
+
+                    new Thread(() -> {
+                        // Kurze künstliche Verzögerung, optional:
+                        H.sleep(50);
+
+                        // Bin ich noch der aktuelle Hover?
+                        if (currentHoverFile != file) return;
+
+                        // Aufwendig laden:
+                        try {
+                            BufferedImage image = ImageIO.read(file);
+                            H.out("setting preloaded image " + file.getName());
+                            AppState.get().setPreloadedImage(image);
+                        } catch (IOException ex) {
+                            throw new RuntimeException(ex);
+                        }
+
+
+                    }).start();
+                }
+            }
+        });
+
         boolean imagedOK = true;
 
         if (type == MEDIA_TYPE.IMAGE) {
@@ -226,7 +257,7 @@ public class ThumbnailPanel extends JPanel {
                 BufferedImage original = ImageIO.read(file);
                 if (original == null) {
                     H.out("Problems reain " + file.getAbsoluteFile().toPath());
-                   return;
+                    return;
                 } else {
                     Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
                     label.setIcon(new ImageIcon(scaled));

@@ -2,10 +2,7 @@ package ui;
 
 import event.*;
 import model.AppState;
-import service.Controller;
-import service.EventBus;
-import service.RangeHandler;
-import service.VolumeHandler;
+import service.*;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
 import uk.co.caprica.vlcj.player.base.State;
@@ -49,7 +46,7 @@ public class MediaView {
             @Override
             public void windowClosing(java.awt.event.WindowEvent e) {
                 mediaPlayerComponent.mediaPlayer().controls().stop();
-               // mediaPlayerComponent.mediaPlayer().release(); // Optional: VLC-Ressourcen freigeben
+                // mediaPlayerComponent.mediaPlayer().release(); // Optional: VLC-Ressourcen freigeben
                 Controller.getInstance().getControlPanel().resetPlayPauseButton();
             }
         });
@@ -81,7 +78,7 @@ public class MediaView {
             }
         });
 
-        EventBus.get().register(MediaviewPlayEvent.class, e->{
+        EventBus.get().register(MediaviewPlayEvent.class, e -> {
             if (e.selected()) {
                 play();
             } else {
@@ -89,25 +86,25 @@ public class MediaView {
             }
         });
 
-        EventBus.get().register(MediaViewStopEvent.class, e->{
+        EventBus.get().register(MediaViewStopEvent.class, e -> {
             stop();
             fullscreen(false);
             hideFrame();
         });
 
-        EventBus.get().register(CurrentPlaybackSliderPosEvent.class, e->{
+        EventBus.get().register(CurrentPlaybackSliderPosEvent.class, e -> {
             SwingUtilities.invokeLater(() -> mediaPlayerComponent.mediaPlayer().controls().setPosition(e.value()));
         });
 
-        EventBus.get().register(MediaViewFullscreenEvent.class, e->{
+        EventBus.get().register(MediaViewFullscreenEvent.class, e -> {
             fullscreen(e.selected());
         });
 
-        EventBus.get().register(VolumeChangedEvent.class, e-> {
+        EventBus.get().register(VolumeChangedEvent.class, e -> {
             setVolume(e.volume());
         });
 
-        EventBus.get().register(RangeChangedEvent.class, r-> {
+        EventBus.get().register(RangeChangedEvent.class, r -> {
             range = RangeHandler.getInstance().getRangeForFile(currentFile);
         });
     }
@@ -154,6 +151,8 @@ public class MediaView {
         timer.start();
     }
 
+    boolean isFirstAufruf = true;
+
     public void display(File file, boolean autostart) {
         if (file == null || !file.exists()) return;
 
@@ -162,7 +161,10 @@ public class MediaView {
         range = RangeHandler.getInstance().getRangeForFile(file);
 
         if (Controller.isImageFile(file)) {
-            fullscreen(AppState.get().isMediaviewFullscreen());
+            if (isFirstAufruf) {
+                fullscreen(AppState.get().isMediaviewFullscreen());
+                isFirstAufruf = false;
+            }
             frame.setVisible(true);
             showImage(file);
         } else if (Controller.isVideoFile(file)) {
@@ -171,13 +173,21 @@ public class MediaView {
     }
 
     private void showImage(File file) {
-        BufferedImage image = null;
-        try {
-            image = ImageIO.read(file);
-        } catch (IOException e) {
-            e.printStackTrace();
-            return;
+
+        BufferedImage image = AppState.get().getPreloadedImage();
+
+        if (image == null) {
+            try {
+                image = ImageIO.read(file);
+            } catch (IOException e) {
+                e.printStackTrace();
+                return;
+            }
+        } else {
+            H.out("preload hat gezogen");
         }
+
+        AppState.get().setPreloadedImage(null);
 
         if (image == null) {
             System.err.println("Konnte Bild nicht laden: " + file);
@@ -202,7 +212,7 @@ public class MediaView {
             AnimatedImagePanel animatedPanel = new AnimatedImagePanel(image, newWidth, newHeight);
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
-        }else {
+        } else {
             imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
             cardLayout.show(stackPanel, "image");
         }
@@ -271,6 +281,7 @@ public class MediaView {
 
     private boolean isFullscreen = false;
     private Rectangle windowedBounds;
+
     private GraphicsDevice getCurrentScreenDeviceForFrame(JFrame frame) {
         GraphicsEnvironment ge = GraphicsEnvironment.getLocalGraphicsEnvironment();
         GraphicsDevice[] devices = ge.getScreenDevices();
@@ -317,8 +328,6 @@ public class MediaView {
             isFullscreen = fullscreen;
         });
     }
-
-
 
 
     public boolean isVideoPlaying() {

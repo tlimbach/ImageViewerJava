@@ -2,6 +2,7 @@ package model;
 
 import lombok.Data;
 
+import java.awt.image.BufferedImage;
 import java.io.File;
 import java.nio.file.Path;
 
@@ -22,5 +23,7 @@ public class AppState {
    private boolean autoOpenTagsDialog;
 
    private boolean isMediaviewFullscreen;
+
+   private BufferedImage preloadedImage;
 
 }

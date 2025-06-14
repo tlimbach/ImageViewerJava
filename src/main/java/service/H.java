@@ -23,4 +23,12 @@ public class H {
             System.out.println("Ich bin NICHT im UI-Thread." + a);
         }
     }
+
+    public static void sleep(int i) {
+        try {
+            Thread.sleep(i);
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
+    }
 }
