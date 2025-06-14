@@ -4,16 +4,14 @@ import event.CurrentDirectoryChangedEvent;
 import event.RangeChangedEvent;
 import event.ThumbnailsLoadedEvent;
 import model.AppState;
-import service.Controller;
-import service.EventBus;
-import service.MediaService;
-import service.RangeHandler;
+import service.*;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseListener;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
@@ -21,7 +19,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executors;
 
 public class ThumbnailPanel extends JPanel {
 
@@ -38,11 +35,14 @@ public class ThumbnailPanel extends JPanel {
 
     private final JScrollPane scrollPane;
 
-
+private MouseListener mouseListener;
     private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
 
 
     public ThumbnailPanel() {
+
+        mouseListener = createMousListener();
+
         setLayout(new BorderLayout());
         scrollPane = new JScrollPane();
         scrollPane.getVerticalScrollBar().setUnitIncrement(8);
@@ -54,7 +54,7 @@ public class ThumbnailPanel extends JPanel {
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
             List<File> files = MediaService.getInstance().loadFilesFromDirectory();
-            populate(files);
+            Controller.getInstance().getExecutorService().submit(()->populate(files));
         });
 
         EventBus.get().register(RangeChangedEvent.class, e -> {
@@ -82,88 +82,13 @@ public class ThumbnailPanel extends JPanel {
         });
     }
 
-    void updateVisibleThumbnails() {
-        Rectangle view = scrollPane.getViewport().getViewRect();
-        for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
-            boolean visible = view.intersects(thumb.label.getBounds());
-            if (visible && !thumb.isRunning) {
-                thumb.start();
-            } else if (!visible && thumb.isRunning) {
-                thumb.stop();
-            }
-        }
-    }
-
-    public List<AnimatedThumbnail> animatedThumbnails = new ArrayList<>();
-    int thumbnailsLoadedCount = 0;
-    int totalFramesLoaded = 0;
-    int framesFromCache = 0;
-
-    private long currentGenerationId = 0;
-    int processed = 0;
-
-    public void populate(List<File> mediaFiles) {
-        long generation = ++currentGenerationId;
-
-        thumbnailsLoadedCount = 0;
-        totalFramesLoaded = 0;
-        framesFromCache = 0;
-
-        long now = System.currentTimeMillis();
-        animatedThumbnails.forEach(AnimatedThumbnail::stop);
-        animatedThumbnails.clear();
-        System.out.println("took " + (System.currentTimeMillis() - now));
-
-        // Neues GridPanel erzeugen
-        JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
-
-        // Viewport-Listener an neuen Panel binden
-        scrollPane.setViewportView(newGridPanel);
-
-        for (File file : mediaFiles) {
-            if (Controller.isImageFile(file)) {
-                addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.IMAGE, Collections.singletonList(file), file);
-                thumbnailsLoadedCount++;
-                EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
-            } else if (Controller.isVideoFile(file)) {
-                CompletableFuture
-                        .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
-                                Controller.getInstance().getExecutorService())
-                        .thenAccept(thumbFiles -> {
-                            if (generation != currentGenerationId) return;
-
-                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                                SwingUtilities.invokeLater(() -> {
-                                    if (generation != currentGenerationId) return;
-                                    addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.VIDEO, thumbFiles, file);
-                                    thumbnailsLoadedCount++;
-
-                                    EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
-                                    updateVisibleThumbnails();  // sicherheitshalber
-                                });
-                            }
-                        });
-            }
-        }
-
-//        SwingUtilities.invokeLater(() -> {
-//            newGridPanel.revalidate();
-//            newGridPanel.repaint();
-//            updateVisibleThumbnails();
-//        });
-    }
-
-    private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file) {
-        JLabel label = new JLabel();
-        label.setHorizontalAlignment(SwingConstants.CENTER);
-        label.setVerticalAlignment(SwingConstants.CENTER);
-        label.setPreferredSize(new Dimension(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
-        label.setOpaque(true);
-        label.setBackground(Color.DARK_GRAY);
-
-        label.addMouseListener(new MouseAdapter() {
+    private MouseAdapter createMousListener() {
+        return new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+
+                JLabel label = (JLabel) e.getSource();
+                File file = (File) label.getClientProperty("file");
 
                 if (SwingUtilities.isRightMouseButton(e)) {
                     // Kontextmenü erstellen
@@ -208,7 +133,86 @@ public class ThumbnailPanel extends JPanel {
                     Controller.getInstance().handleMedia(file, true);
                 }
             }
-        });
+        };
+    }
+
+    void updateVisibleThumbnails() {
+        Rectangle view = scrollPane.getViewport().getViewRect();
+        for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
+            boolean visible = view.intersects(thumb.label.getBounds());
+            if (visible && !thumb.isRunning) {
+                thumb.start();
+            } else if (!visible && thumb.isRunning) {
+                thumb.stop();
+            }
+        }
+    }
+
+    public List<AnimatedThumbnail> animatedThumbnails = new ArrayList<>();
+    int thumbnailsLoadedCount = 0;
+    int totalFramesLoaded = 0;
+    int framesFromCache = 0;
+
+    private long currentGenerationId = 0;
+    int processed = 0;
+
+    public void populate(List<File> mediaFiles) {
+
+        long generation = ++currentGenerationId;
+
+        thumbnailsLoadedCount = 0;
+        totalFramesLoaded = 0;
+        framesFromCache = 0;
+
+        long now = System.currentTimeMillis();
+        animatedThumbnails.forEach(AnimatedThumbnail::stop);
+        animatedThumbnails.clear();
+        System.out.println("took " + (System.currentTimeMillis() - now));
+
+        // Neues GridPanel erzeugen
+        JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
+
+        // Viewport-Listener an neuen Panel binden
+        scrollPane.setViewportView(newGridPanel);
+
+        for (File file : mediaFiles) {
+
+            if (Controller.isImageFile(file)) {
+                addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.IMAGE, Collections.singletonList(file), file);
+                thumbnailsLoadedCount++;
+                EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
+            } else if (Controller.isVideoFile(file)) {
+                CompletableFuture
+                        .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
+                                Controller.getInstance().getExecutorService())
+                        .thenAccept(thumbFiles -> {
+                            if (generation != currentGenerationId) return;
+
+                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                                SwingUtilities.invokeLater(() -> {
+                                    if (generation != currentGenerationId) return;
+                                    addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.VIDEO, thumbFiles, file);
+                                    thumbnailsLoadedCount++;
+
+                                    EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
+                                    updateVisibleThumbnails();
+                                });
+                            }
+                        });
+            }
+        }
+
+    }
+
+    private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file) {
+        JLabel label = new JLabel();
+        label.setHorizontalAlignment(SwingConstants.CENTER);
+        label.setVerticalAlignment(SwingConstants.CENTER);
+        label.setPreferredSize(new Dimension(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
+        label.setOpaque(true);
+        label.setBackground(Color.DARK_GRAY);
+        label.putClientProperty("file", file);
+        label.addMouseListener(mouseListener);
 
         panel.add(label);
 

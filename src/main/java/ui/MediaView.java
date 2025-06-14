@@ -167,8 +167,8 @@ public class MediaView {
     private void showImage(File file) {
         ImageIcon icon = new ImageIcon(file.getAbsolutePath());
         Image image = icon.getImage();
-        int maxWidth = frame.getWidth() - 50;
-        int maxHeight = frame.getHeight() - 70;
+        int maxWidth = frame.getWidth();
+        int maxHeight = frame.getHeight();
         double scale = Math.min((double) maxWidth / image.getWidth(null), (double) maxHeight / image.getHeight(null));
 
         int newWidth = (int) (image.getWidth(null) * scale);

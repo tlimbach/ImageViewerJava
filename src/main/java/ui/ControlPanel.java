@@ -65,6 +65,11 @@ public class ControlPanel extends JPanel {
         btnFileChooser.addActionListener(a -> {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+
+            if (AppState.get().getCurrentDirectory() != null){
+                chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().getParent().toFile());
+            }
+
             if (chooser.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
                 MediaService.getInstance().setDirectory(chooser.getSelectedFile().toPath());
             }

@@ -6,11 +6,20 @@ import java.awt.image.BufferedImage;
 
 public class AnimatedImagePanel extends JPanel {
     // ------------------ STELLSCHRAUBEN ------------------
-    private static final double BASE_SCALE_MULTIPLIER = 1.8;     // Basisvergrößerung über die Zielgröße hinaus
-    private static final double MAX_ZOOM_VARIATION = -0.1;       // Zoomschwankung (z. B. 0.15 = ±15%)
-    private static final double ZOOM_SPEED = 0.008;              // Geschwindigkeit des Zooms
-    private static final double PAN_SPEED_X = 0.0035;             // Geschwindigkeit horizontales Schwenken
-    private static final double PAN_SPEED_Y = 0.0035;             // Geschwindigkeit vertikales Schwenken
+//    private static final double BASE_SCALE_MULTIPLIER = 1.8;     // Basisvergrößerung über die Zielgröße hinaus
+//    private static final double MAX_ZOOM_VARIATION = -0.1;       // Zoomschwankung (z. B. 0.15 = ±15%)
+//    private static final double ZOOM_SPEED = 0.008;              // Geschwindigkeit des Zooms
+//    private static final double PAN_SPEED_X = 0.0035;             // Geschwindigkeit horizontales Schwenken
+//    private static final double PAN_SPEED_Y = 0.0035;             // Geschwindigkeit vertikales Schwenken
+
+    // Stellschrauben
+    private static final double BASE_SCALE_MULTIPLIER = 1.0; // exakte Zielgröße am Start
+    private static final double MAX_ZOOM_VARIATION = 0.6;    // nur positive Variation (reinzoomen)
+    private static final double ZOOM_SPEED = 0.003;
+    private static final double PAN_SPEED_X = 0.005;
+    private static final double PAN_SPEED_Y = 0.005;
+
+    private static double initialZoom = 0;
 
     // ------------------ INSTANZVARIABLEN ------------------
     private final BufferedImage image;
@@ -24,6 +33,7 @@ public class AnimatedImagePanel extends JPanel {
     private double panPhaseY = 1.7;
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
+        initialZoom = 0;
         this.image = toBufferedImage(image);
         this.baseWidth = newWidth;
         this.baseHeight = newHeight;
@@ -61,7 +71,19 @@ public class AnimatedImagePanel extends JPanel {
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-        double zoomFactor = 1.0 + Math.sin(zoomPhase) * MAX_ZOOM_VARIATION;
+//        double zoomFactor = 1.0 + Math.sin(zoomPhase) * MAX_ZOOM_VARIATION;
+//        double zoom = baseScale * zoomFactor;
+
+        double zoomFactor = 1.0 + (Math.sin(zoomPhase) * 0.5 + 0.5) * MAX_ZOOM_VARIATION;
+
+        if (initialZoom == 0)
+            initialZoom = zoomFactor;
+
+        System.out.println("Zoom faktor " + zoomFactor);
+
+        if (zoomFactor<initialZoom)
+            zoomFactor = initialZoom;
+
         double zoom = baseScale * zoomFactor;
 
         int iw = (int)(image.getWidth() * zoom);
