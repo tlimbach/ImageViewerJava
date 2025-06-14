@@ -21,4 +21,6 @@ public class AppState {
 
    private boolean autoOpenTagsDialog;
 
+   private boolean isMediaviewFullscreen;
+
 }

@@ -42,6 +42,7 @@ public class MediaView {
         frame = new JFrame("Media Viewer");
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(1280, 768);
+
         frame.setLayout(new BorderLayout());
 
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
@@ -62,6 +63,7 @@ public class MediaView {
         stackPanel.add(imageLabel, "image");
 
         mediaPlayerComponent = new CallbackMediaPlayerComponent();
+
         stackPanel.add(mediaPlayerComponent.videoSurfaceComponent(), "video");
 
         frame.add(stackPanel, BorderLayout.CENTER);
@@ -160,6 +162,7 @@ public class MediaView {
         range = RangeHandler.getInstance().getRangeForFile(file);
 
         if (Controller.isImageFile(file)) {
+            fullscreen(AppState.get().isMediaviewFullscreen());
             frame.setVisible(true);
             showImage(file);
         } else if (Controller.isVideoFile(file)) {

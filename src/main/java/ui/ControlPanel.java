@@ -172,7 +172,10 @@ public class ControlPanel extends JPanel {
         });
 
         JToggleButton btnFullscreen = new JToggleButton("Vollbild");
+        btnFullscreen.setSelected(true);
+        AppState.get().setMediaviewFullscreen(true);
         btnFullscreen.addActionListener(a -> EventBus.get().publish(new MediaViewFullscreenEvent(btnFullscreen.isSelected())));
+        btnFullscreen.addActionListener(a-> AppState.get().setMediaviewFullscreen(btnFullscreen.isSelected()));
 
         add(H.makeHorizontalPanel(btnPlayPause, btnStop));
         add(H.makeHorizontalPanel(cbxAutostart, btnFullscreen));
