@@ -183,6 +183,12 @@ public class MediaView {
             if (isFirstAufruf) {
                 fullscreen(AppState.get().isMediaviewFullscreen());
                 isFirstAufruf = false;
+                // Wichtig: wir warten auf Validierung
+                SwingUtilities.invokeLater(() -> {
+                    frame.setVisible(true);
+                    showImage(file);
+                });
+                return;
             }
             frame.setVisible(true);
             showImage(file);

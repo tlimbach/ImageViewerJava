@@ -1,9 +1,6 @@
 package ui;
 
-import event.CurrentDirectoryChangedEvent;
-import event.RangeChangedEvent;
-import event.RotationChangedEvent;
-import event.ThumbnailsLoadedEvent;
+import event.*;
 import model.AppState;
 import service.*;
 
@@ -124,7 +121,8 @@ public class ThumbnailPanel extends JPanel {
 
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
-                                reloadDirectory();
+                                EventBus.get().publish(new TagsChangedEvent());
+                                Controller.getInstance().getExecutorService().submit(()-> reloadDirectory());
                             } else {
                                 JOptionPane.showMessageDialog(label,
                                         "Datei konnte nicht gelöscht werden.",
