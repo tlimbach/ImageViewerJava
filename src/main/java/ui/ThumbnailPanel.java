@@ -103,13 +103,12 @@ public class ThumbnailPanel extends JPanel {
     private MouseAdapter createMousListener() {
         return new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
-
+            public void mousePressed(MouseEvent e) {
                 JLabel label = (JLabel) e.getSource();
                 File file = (File) label.getClientProperty("file");
 
                 if (SwingUtilities.isRightMouseButton(e)) {
-                    // Kontextmenü erstellen
+                    // Kontextmenü wie gehabt
                     JPopupMenu popup = new JPopupMenu();
                     JMenuItem deleteItem = new JMenuItem("Bild löschen");
 
@@ -122,7 +121,7 @@ public class ThumbnailPanel extends JPanel {
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
                                 EventBus.get().publish(new TagsChangedEvent());
-                                Controller.getInstance().getExecutorService().submit(()-> reloadDirectory());
+                                Controller.getInstance().getExecutorService().submit(() -> reloadDirectory());
                             } else {
                                 JOptionPane.showMessageDialog(label,
                                         "Datei konnte nicht gelöscht werden.",
@@ -134,17 +133,18 @@ public class ThumbnailPanel extends JPanel {
 
                     popup.add(deleteItem);
                     popup.show(e.getComponent(), e.getX(), e.getY());
-                    return; // Kein weiterer Klickhandling bei Rechtsklick
+                    return; // Rechtsklick fertig
                 }
 
                 if (selectedLabel != null) {
-                    selectedLabel.setBorder(null);  // vorherige Auswahl entfernen
+                    selectedLabel.setBorder(null);
                 }
-
                 selectedLabel = label;
                 selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
 
+                // Single + Double: Zähler über ClickCount
                 if (e.getClickCount() == 1) {
+                    H.out("once pressed " + file.getName());
                     AppState.get().setCurrentFile(file);
                     Controller.getInstance().handleMedia(file, false);
                 } else if (e.getClickCount() == 2) {
