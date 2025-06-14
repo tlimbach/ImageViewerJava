@@ -2,6 +2,7 @@ package ui;
 
 import event.CurrentDirectoryChangedEvent;
 import event.RangeChangedEvent;
+import event.RotationChangedEvent;
 import event.ThumbnailsLoadedEvent;
 import model.AppState;
 import service.*;
@@ -81,6 +82,24 @@ public class ThumbnailPanel extends JPanel {
                             }
                         });
             }
+        });
+
+        EventBus.get().register(RotationChangedEvent.class, e -> {
+            SwingUtilities.invokeLater(() -> {
+                for (AnimatedThumbnail thumb : animatedThumbnails) {
+                    if (thumb.filename.equals(e.file().getName())) {
+                        try {
+                            BufferedImage original = ImageIO.read(e.file());
+                            BufferedImage rotated = H.rotate(original, e.degrees());
+                            Image scaled = getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+                            thumb.label.setIcon(new ImageIcon(scaled));
+                        } catch (IOException ex) {
+                            ex.printStackTrace();
+                        }
+                        break;
+                    }
+                }
+            });
         });
     }
 
@@ -259,7 +278,9 @@ public class ThumbnailPanel extends JPanel {
                     H.out("Problems reain " + file.getAbsoluteFile().toPath());
                     return;
                 } else {
-                    Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+                    int rotation = RotationHandler.getInstance().getRotation(file);
+                    BufferedImage rotated = H.rotate(original, rotation);
+                    Image scaled = getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
                     label.setIcon(new ImageIcon(scaled));
                 }
             } catch (IOException e) {

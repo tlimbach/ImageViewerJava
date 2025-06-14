@@ -51,6 +51,19 @@ public class MediaView {
             }
         });
 
+        frame.addKeyListener(new java.awt.event.KeyAdapter() {
+            @Override
+            public void keyPressed(java.awt.event.KeyEvent e) {
+                if (currentFile == null) return;
+                int rot = RotationHandler.getInstance().getRotation(currentFile);
+                if (e.getKeyChar() == 'l') {
+                    RotationHandler.getInstance().setRotation(currentFile, rot - 90);
+                } else if (e.getKeyChar() == 'r') {
+                    RotationHandler.getInstance().setRotation(currentFile, rot + 90);
+                }
+            }
+        });
+
         cardLayout = new CardLayout();
         stackPanel = new JPanel(cardLayout);
 
@@ -106,6 +119,12 @@ public class MediaView {
 
         EventBus.get().register(RangeChangedEvent.class, r -> {
             range = RangeHandler.getInstance().getRangeForFile(currentFile);
+        });
+
+        EventBus.get().register(RotationChangedEvent.class, e -> {
+            if (currentFile != null && currentFile.equals(e.file())) {
+                showImage(currentFile);
+            }
         });
     }
 
@@ -193,27 +212,29 @@ public class MediaView {
             System.err.println("Konnte Bild nicht laden: " + file);
             return;
         }
+        int rotation = RotationHandler.getInstance().getRotation(file);
+
+        BufferedImage rotatedImage = H.rotate(image, rotation);
+
         int maxWidth = frame.getWidth();
         int maxHeight = frame.getHeight();
-        double scale = Math.min((double) maxWidth / image.getWidth(null), (double) maxHeight / image.getHeight(null));
+        double scale = Math.min((double) maxWidth / rotatedImage.getWidth(), (double) maxHeight / rotatedImage.getHeight());
 
-        int newWidth = (int) (image.getWidth(null) * scale);
-        int newHeight = (int) (image.getHeight(null) * scale);
+        int newWidth = (int) (rotatedImage.getWidth() * scale);
+        int newHeight = (int) (rotatedImage.getHeight() * scale);
 
         if (Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
-
             for (Component comp : stackPanel.getComponents()) {
                 if (comp instanceof AnimatedImagePanel) {
                     stackPanel.remove(comp);
                     break;
                 }
             }
-
-            AnimatedImagePanel animatedPanel = new AnimatedImagePanel(image, newWidth, newHeight);
+            AnimatedImagePanel animatedPanel = new AnimatedImagePanel(rotatedImage, newWidth, newHeight);
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
         } else {
-            imageLabel.setIcon(new ImageIcon(image.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
+            imageLabel.setIcon(new ImageIcon(rotatedImage.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
             cardLayout.show(stackPanel, "image");
         }
 
