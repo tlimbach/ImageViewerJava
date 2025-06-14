@@ -6,6 +6,7 @@ import service.*;
 
 import javax.swing.*;
 import java.io.File;
+import java.util.Arrays;
 import java.util.List;
 
 public class ControlPanel extends JPanel {
@@ -62,11 +63,35 @@ public class ControlPanel extends JPanel {
 
     private void addFileChooserButton() {
         JButton btnFileChooser = new JButton("Verzeichnis wählen");
+
+        // Label für Live-Info
+        JLabel lblInfo = new JLabel("Noch nichts gewählt");
+
         btnFileChooser.addActionListener(a -> {
             JFileChooser chooser = new JFileChooser();
             chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
 
-            if (AppState.get().getCurrentDirectory() != null){
+            // Label oben im Chooser anzeigen:
+            chooser.setAccessory(lblInfo);
+
+            // Live-Analyse bei Auswahlwechsel:
+            chooser.addPropertyChangeListener(evt -> {
+                if (JFileChooser.DIRECTORY_CHANGED_PROPERTY.equals(evt.getPropertyName())
+                        || JFileChooser.SELECTED_FILE_CHANGED_PROPERTY.equals(evt.getPropertyName())) {
+                    File selected = (File) evt.getNewValue();
+                    if (selected != null && selected.isDirectory()) {
+                        File[] files = selected.listFiles();
+                        int imageCount = (int) Arrays.stream(files).filter(Controller::isImageFile).count();
+                        int videoCount = (int) Arrays.stream(files).filter(Controller::isVideoFile).count();
+
+                        lblInfo.setText("<html><br>Bilder: " + imageCount + "<br>Videos: "+ videoCount + "</html>");
+                    } else {
+                        lblInfo.setText("Ungültige Auswahl");
+                    }
+                }
+            });
+
+            if (AppState.get().getCurrentDirectory() != null) {
                 chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().getParent().toFile());
             }
 
@@ -74,6 +99,7 @@ public class ControlPanel extends JPanel {
                 MediaService.getInstance().setDirectory(chooser.getSelectedFile().toPath());
             }
         });
+
         add(H.makeHorizontalPanel(btnFileChooser));
     }
 
