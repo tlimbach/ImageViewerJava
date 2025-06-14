@@ -11,11 +11,14 @@ import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
 import uk.co.caprica.vlcj.player.base.State;
 import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 
 public class MediaView {
 
@@ -165,8 +168,18 @@ public class MediaView {
     }
 
     private void showImage(File file) {
-        ImageIcon icon = new ImageIcon(file.getAbsolutePath());
-        Image image = icon.getImage();
+        BufferedImage image = null;
+        try {
+            image = ImageIO.read(file);
+        } catch (IOException e) {
+            e.printStackTrace();
+            return;
+        }
+
+        if (image == null) {
+            System.err.println("Konnte Bild nicht laden: " + file);
+            return;
+        }
         int maxWidth = frame.getWidth();
         int maxHeight = frame.getHeight();
         double scale = Math.min((double) maxWidth / image.getWidth(null), (double) maxHeight / image.getHeight(null));
