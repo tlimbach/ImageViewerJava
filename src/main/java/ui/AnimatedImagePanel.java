@@ -32,6 +32,8 @@ public class AnimatedImagePanel extends JPanel {
     private double panPhaseX = 0;
     private double panPhaseY = 1.7;
 
+    private double alteZoom =0;
+
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
         initialZoom = 0;
         this.image = toBufferedImage(image);
@@ -75,6 +77,12 @@ public class AnimatedImagePanel extends JPanel {
 //        double zoom = baseScale * zoomFactor;
 
         double zoomFactor = 1.0 + (Math.sin(zoomPhase) * 0.5 + 0.5) * MAX_ZOOM_VARIATION;
+
+        if (zoomFactor<alteZoom)
+            zoomFactor = alteZoom;
+
+        alteZoom = zoomFactor;
+
 
         if (initialZoom == 0)
             initialZoom = zoomFactor;
