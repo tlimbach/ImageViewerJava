@@ -184,8 +184,12 @@ public class MediaView {
 
     boolean isFirstAufruf = true;
 
-    public void display(File file, boolean autostart) {
-        if (file == null || !file.exists()) return;
+    public void display(File _file, boolean autostart) {
+        File file = AppState.get().getFileForCurrentDirectory(_file);
+        if (file == null || !file.exists()) {
+            H.out("No file : " + file.getAbsolutePath());
+            return;
+        }
 
         currentFile = file;
         stop();
@@ -272,7 +276,7 @@ public class MediaView {
     }
 
     private void playVideoFile(File file) {
-        int vol = VolumeHandler.getInstance().getVolumeForFile(file.getAbsolutePath());
+        int vol = VolumeHandler.getInstance().getVolumeForFile(file);
         SwingUtilities.invokeLater(() -> {
             MediaPlayer player = mediaPlayerComponent.mediaPlayer();
 

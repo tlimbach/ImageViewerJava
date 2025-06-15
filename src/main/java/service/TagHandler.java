@@ -1,5 +1,6 @@
 package service;
 
+import event.CurrentDirectoryChangedEvent;
 import model.AppState;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -19,11 +20,20 @@ public class TagHandler {
         return tagHandler;
     }
 
-    private final String tagFileName = "media_tags.json";
+
     private JSONObject tagData;
 
     private TagHandler() {
         load();
+        EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> load());
+    }
+
+
+    private File getTagFile() {
+        Path settingsDir = AppState.get().getSettingsDirectory();
+        return settingsDir != null
+                ? settingsDir.resolve("media_tags.json").toFile()
+                : new File("media_tags.json"); // Fallback (optional)
     }
 
     public List<String> getTagsForFile(String filename) {
@@ -53,7 +63,7 @@ public class TagHandler {
     }
 
     private void load() {
-        File file = new File(tagFileName);
+        File file = getTagFile();
         if (!file.exists()) {
             tagData = new JSONObject();
             return;
@@ -66,10 +76,12 @@ public class TagHandler {
             e.printStackTrace();
             tagData = new JSONObject();
         }
+
+        cleanup();
     }
 
     private void save() {
-        try (Writer writer = Files.newBufferedWriter(Paths.get(tagFileName))) {
+        try (Writer writer = Files.newBufferedWriter(getTagFile().toPath())) {
             writer.write(tagData.toString(2));
         } catch (IOException e) {
             e.printStackTrace();
@@ -80,9 +92,6 @@ public class TagHandler {
         Map<String, Integer> tagCounts = new HashMap<>();
 
         for (String key : tagData.keySet()) {
-            Path filePath = Paths.get(key);
-            if (!filePath.getParent().equals(AppState.get().getCurrentDirectory())) continue;
-
             JSONArray arr = tagData.optJSONArray(key);
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) {
@@ -113,9 +122,7 @@ public class TagHandler {
                     }
                 }
                 if (!Collections.disjoint(fileTags, selectedTags)) {
-                    if (Paths.get(key).getParent().equals(AppState.get().getCurrentDirectory())) {
-                        matchingFiles.add(key);
-                    }
+                     matchingFiles.add(key);
                 }
             }
         }
@@ -138,11 +145,11 @@ public class TagHandler {
         List<File> untagged = new ArrayList<>();
 
         for (File file : files) {
-            String absolutePath = file.getAbsolutePath();
-            if (!tagData.has(absolutePath)) {
+            String filename = file.getName();
+            if (!tagData.has(filename)) {
                 untagged.add(file);
             } else {
-                JSONArray arr = tagData.optJSONArray(absolutePath);
+                JSONArray arr = tagData.optJSONArray(filename);
                 if (arr == null || arr.isEmpty()) {
                     untagged.add(file);
                 }
@@ -150,5 +157,31 @@ public class TagHandler {
         }
 
         return untagged;
+    }
+
+    /**
+     * Entfernt Einträge für Dateien, die im aktuellen Ordner nicht mehr existieren.
+     * Führt ein Save aus, falls Änderungen auftraten.
+     */
+    private void cleanup() {
+        Path currentDir = AppState.get().getCurrentDirectory();
+        if (currentDir == null) return;
+
+        boolean modified = false;
+
+        Iterator<String> iter = tagData.keySet().iterator();
+        while (iter.hasNext()) {
+            String filename = iter.next();
+            Path filePath = currentDir.resolve(filename);
+            if (!Files.exists(filePath)) {
+                iter.remove();
+                modified = true;
+            }
+        }
+
+        if (modified) {
+            save();
+            System.out.println("[Cleanup] Ungültige Einträge in media_tags.json entfernt.");
+        }
     }
 }

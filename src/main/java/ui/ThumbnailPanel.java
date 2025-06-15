@@ -11,6 +11,8 @@ import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -34,14 +36,14 @@ public class ThumbnailPanel extends JPanel {
     private MouseListener mouseListener;
 
     private volatile File currentHoverFile;
-    private static final File THUMBNAIL_CACHE_DIR = new File("thumbnails");
+
     private JLabel myLabel;
 
 
     public ThumbnailPanel() {
 
 
-        mouseListener = createMousListener();
+        mouseListener = createMouseListener();
 
         setLayout(new BorderLayout());
         scrollPane = new JScrollPane();
@@ -174,7 +176,7 @@ public class ThumbnailPanel extends JPanel {
         });
     }
 
-    private MouseAdapter createMousListener() {
+    private MouseAdapter createMouseListener() {
         return new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
@@ -256,7 +258,6 @@ public class ThumbnailPanel extends JPanel {
     int processed = 0;
 
     public void populate(List<File> _mediaFiles) {
-
         List<File> mediaFiles = new ArrayList<>(_mediaFiles);
 
         long generation = ++currentGenerationId;
@@ -351,19 +352,19 @@ public class ThumbnailPanel extends JPanel {
         label.addMouseListener(mouseListener);
 
 
-        label.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                super.keyPressed(e);
-                H.out("new pressed :" + e.getKeyCode());
-            }
-
-            @Override
-            public void keyTyped(KeyEvent e) {
-                super.keyTyped(e);
-                H.out("oidjwoidjwoid");
-            }
-        });
+//        label.addKeyListener(new KeyAdapter() {
+//            @Override
+//            public void keyPressed(KeyEvent e) {
+//                super.keyPressed(e);
+//                H.out("new pressed :" + e.getKeyCode());
+//            }
+//
+//            @Override
+//            public void keyTyped(KeyEvent e) {
+//                super.keyTyped(e);
+//                H.out("oidjwoidjwoid");
+//            }
+//        });
 
 
         label.addMouseListener(new MouseAdapter() {
@@ -382,7 +383,7 @@ public class ThumbnailPanel extends JPanel {
 
                         // Aufwendig laden:
                         try {
-                            BufferedImage image = ImageIO.read(file);
+                            BufferedImage image = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
                             H.out("setting preloaded image " + file.getName());
                             AppState.get().setPreloadedImage(image);
                         } catch (IOException ex) {
@@ -399,9 +400,9 @@ public class ThumbnailPanel extends JPanel {
 
         if (type == MEDIA_TYPE.IMAGE) {
             try {
-                BufferedImage original = ImageIO.read(file);
+                BufferedImage original = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
                 if (original == null) {
-                    H.out("Problems reain " + file.getAbsoluteFile().toPath());
+                    H.out("Problems remain " + file.getAbsoluteFile().toPath());
                     return;
                 } else {
                     int rotation = RotationHandler.getInstance().getRotation(file);
@@ -436,7 +437,7 @@ public class ThumbnailPanel extends JPanel {
     }
 
     public void invalidateThumbnails(File videoFile) {
-        File[] cachedFiles = THUMBNAIL_CACHE_DIR.listFiles((dir, name) -> name.endsWith(videoFile.getName() + ".jpg"));
+        File[] cachedFiles = getThumbnailCacheDir().listFiles((dir, name) -> name.endsWith(videoFile.getName() + ".jpg"));
         if (cachedFiles != null) {
             for (File f : cachedFiles) {
                 f.delete();
@@ -487,13 +488,13 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private File fetchVideoThumbnail(File videoFile, int milli) {
-        if (!THUMBNAIL_CACHE_DIR.exists()) {
-            THUMBNAIL_CACHE_DIR.mkdirs();
+        if (!getThumbnailCacheDir().exists()) {
+            getThumbnailCacheDir().mkdirs();
         }
 
         String nameInCache = milli + "_" + videoFile.getName() + ".jpg";
         totalFramesLoaded++;
-        File file = new File(THUMBNAIL_CACHE_DIR, nameInCache);
+        File file = new File(getThumbnailCacheDir(), nameInCache);
         if (file.exists()) {
             framesFromCache++;
             return file;
@@ -503,10 +504,24 @@ public class ThumbnailPanel extends JPanel {
         return file;
     }
 
+    private File getThumbnailCacheDir() {
+        Path currentDir = AppState.get().getCurrentDirectory();
+        if (currentDir == null) return new File("thumbnails"); // Fallback für Notfall
+        Path thumbsDir = currentDir.resolve("thumbnails");
+        if (!Files.exists(thumbsDir)) {
+            try {
+                Files.createDirectories(thumbsDir);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return thumbsDir.toFile();
+    }
+
     private File extractVideoThumbnail(File videoFile, int milli) {
         try {
             String nameInCache = milli + "_" + videoFile.getName() + ".jpg";
-            File file = new File(THUMBNAIL_CACHE_DIR, nameInCache);
+            File file = new File(getThumbnailCacheDir(), nameInCache);
 
             int totalSeconds = milli / 1000;
             int hours = totalSeconds / 3600;

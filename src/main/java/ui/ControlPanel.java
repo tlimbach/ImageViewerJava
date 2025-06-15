@@ -307,7 +307,7 @@ public class ControlPanel extends JPanel {
                 txtTimerangeEnde.setText(null);
             }
         });
-        int vol = VolumeHandler.getInstance().getVolumeForFile(file.getAbsolutePath());
+        int vol = VolumeHandler.getInstance().getVolumeForFile(file);
         SwingUtilities.invokeLater(() -> {
             lblVol.setText("" + vol);
             sldVolume.setValue(vol);
