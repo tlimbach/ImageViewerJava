@@ -100,5 +100,6 @@ public class TagEditDialog extends JDialog {
 
         TagHandler.getInstance().setTagsToFile(selectedTags, file.getName());
         EventBus.get().publish(new TagsChangedEvent());
+        updateContent();
     }
 }
