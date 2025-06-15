@@ -1,6 +1,7 @@
 package service;
 
 import model.AppState;
+import org.json.JSONArray;
 import org.json.JSONObject;
 import org.json.JSONTokener;
 
@@ -12,7 +13,7 @@ import java.util.*;
 
 public class TagHandler {
 
-    private static TagHandler tagHandler = new TagHandler();
+    private static final TagHandler tagHandler = new TagHandler();
 
     public static TagHandler getInstance() {
         return tagHandler;
@@ -28,17 +29,25 @@ public class TagHandler {
     public List<String> getTagsForFile(String filename) {
         if (!tagData.has(filename)) return Collections.emptyList();
 
-        String tagString = tagData.optString(filename, "").trim();
-        if (tagString.isEmpty()) return Collections.emptyList();
+        JSONArray arr = tagData.optJSONArray(filename);
+        if (arr == null) return Collections.emptyList();
 
-        return Arrays.asList(tagString.split("\\s+"));
+        List<String> tags = new ArrayList<>();
+        for (int i = 0; i < arr.length(); i++) {
+            String tag = arr.optString(i, "").trim();
+            if (!tag.isEmpty()) {
+                tags.add(tag);
+            }
+        }
+        return tags;
     }
 
-    public void setTagsToFile(String tagString, String filename) {
-        if (tagString == null || tagString.trim().isEmpty()) {
+    public void setTagsToFile(List<String> tags, String filename) {
+        if (tags == null || tags.isEmpty()) {
             tagData.remove(filename);
         } else {
-            tagData.put(filename, tagString.trim());
+            JSONArray arr = new JSONArray(tags);
+            tagData.put(filename, arr);
         }
         save();
     }
@@ -55,13 +64,13 @@ public class TagHandler {
             tagData = new JSONObject(tokener);
         } catch (Exception e) {
             e.printStackTrace();
-            tagData = new JSONObject(); // fallback
+            tagData = new JSONObject();
         }
     }
 
     private void save() {
         try (Writer writer = Files.newBufferedWriter(Paths.get(tagFileName))) {
-            writer.write(tagData.toString(2)); // pretty print mit Einrückung
+            writer.write(tagData.toString(2));
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -70,16 +79,17 @@ public class TagHandler {
     public Map<String, Integer> allTags() {
         Map<String, Integer> tagCounts = new HashMap<>();
 
-
         for (String key : tagData.keySet()) {
             Path filePath = Paths.get(key);
             if (!filePath.getParent().equals(AppState.get().getCurrentDirectory())) continue;
 
-            String tagString = tagData.optString(key, "");
-            if (!tagString.isEmpty()) {
-                String[] tags = tagString.trim().split("\\s+");
-                for (String tag : tags) {
-                    tagCounts.put(tag, tagCounts.getOrDefault(tag, 0) + 1);
+            JSONArray arr = tagData.optJSONArray(key);
+            if (arr != null) {
+                for (int i = 0; i < arr.length(); i++) {
+                    String tag = arr.optString(i, "").trim();
+                    if (!tag.isEmpty()) {
+                        tagCounts.put(tag, tagCounts.getOrDefault(tag, 0) + 1);
+                    }
                 }
             }
         }
@@ -88,17 +98,20 @@ public class TagHandler {
     }
 
     public List<String> getFilesForSelectedTags(List<String> selectedTags) {
-        long t0 = System.nanoTime();
         if (selectedTags == null || selectedTags.isEmpty()) return null;
-
 
         List<String> matchingFiles = new ArrayList<>();
 
         for (String key : tagData.keySet()) {
-            String tagString = tagData.optString(key, "");
-            if (!tagString.isEmpty()) {
-                Set<String> fileTags = new HashSet<>(Arrays.asList(tagString.trim().split("\\s+")));
-
+            JSONArray arr = tagData.optJSONArray(key);
+            if (arr != null) {
+                Set<String> fileTags = new HashSet<>();
+                for (int i = 0; i < arr.length(); i++) {
+                    String tag = arr.optString(i, "").trim();
+                    if (!tag.isEmpty()) {
+                        fileTags.add(tag);
+                    }
+                }
                 if (!Collections.disjoint(fileTags, selectedTags)) {
                     if (Paths.get(key).getParent().equals(AppState.get().getCurrentDirectory())) {
                         matchingFiles.add(key);
@@ -106,11 +119,8 @@ public class TagHandler {
                 }
             }
         }
-        long t1 = System.nanoTime();
-//        System.out.println("Tag filter duration: " + (t1 - t0)/1_000_000.0 + " ms");
         return matchingFiles;
     }
-
 
     public List<File> getUntaggedFiles() {
         Path currentDir = AppState.get().getCurrentDirectory();
@@ -132,8 +142,8 @@ public class TagHandler {
             if (!tagData.has(absolutePath)) {
                 untagged.add(file);
             } else {
-                String tags = tagData.optString(absolutePath, "").trim();
-                if (tags.isEmpty()) {
+                JSONArray arr = tagData.optJSONArray(absolutePath);
+                if (arr == null || arr.isEmpty()) {
                     untagged.add(file);
                 }
             }

@@ -21,8 +21,8 @@ public class TagEditDialog extends JDialog {
     private final JPanel tagsPanel = new JPanel();
     private final JPanel centerPanel = new JPanel(new BorderLayout());
 
-    public TagEditDialog() {
-        super((Frame) null, "Tags bearbeiten", false);
+    public TagEditDialog(Window owner) {
+        super(owner, "Tags bearbeiten", ModalityType.MODELESS);
 
         setLayout(new BorderLayout(10, 10));
         setDefaultCloseOperation(HIDE_ON_CLOSE);
@@ -31,7 +31,7 @@ public class TagEditDialog extends JDialog {
         tagsPanel.setBorder(BorderFactory.createTitledBorder("Existierende Tags"));
 
         JPanel newTagPanel = new JPanel(new BorderLayout());
-        newTagPanel.setBorder(BorderFactory.createTitledBorder("Neue Tags (durch Leerzeichen getrennt)"));
+        newTagPanel.setBorder(BorderFactory.createTitledBorder("Neue Tags (durch Komma getrennt)"));
         newTagPanel.add(newTagsField, BorderLayout.CENTER);
 
         JButton saveButton = new JButton("Speichern");
@@ -56,8 +56,11 @@ public class TagEditDialog extends JDialog {
         updateContent();
 
         if (forceShow || AppState.get().isAutoOpenTagsDialog()) {
-            setVisible(true);
-            toFront();
+            if (!isVisible()) {
+                setVisible(true);
+            } else {
+                requestFocus();
+            }
         }
     }
 
@@ -88,14 +91,13 @@ public class TagEditDialog extends JDialog {
                 .map(AbstractButton::getText)
                 .collect(Collectors.toList());
 
-        String newTags = newTagsField.getText().trim();
-        if (!newTags.isEmpty()) {
-            selectedTags.addAll(Arrays.asList(newTags.split("\\s+")));
+        String newTagsInput = newTagsField.getText().trim();
+        if (!newTagsInput.isEmpty()) {
+            String[] newTags = newTagsInput.split("\\s*,\\s*");
+            selectedTags.addAll(Arrays.asList(newTags));
         }
 
-        String joined = String.join(" ", selectedTags);
-        TagHandler.getInstance().setTagsToFile(joined, file.getAbsolutePath());
-
+        TagHandler.getInstance().setTagsToFile(selectedTags, file.getAbsolutePath());
         EventBus.get().publish(new TagsChangedEvent());
     }
 }

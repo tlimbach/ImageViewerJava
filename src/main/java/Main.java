@@ -1,4 +1,5 @@
 import service.Controller;
+import service.TagHandler;
 import ui.ImageViewer;
 
 import javax.swing.*;

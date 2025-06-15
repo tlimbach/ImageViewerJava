@@ -234,10 +234,29 @@ public class ControlPanel extends JPanel {
         txtUntaggedCount = new JLabel("(0)");
         JButton btnSetTags = new JButton("Tags setzen");
         btnSetTags.addActionListener(a -> {
-
             if (AppState.get().getCurrentFile() != null) {
-                if (tagEditDialog == null)
-                    tagEditDialog = new TagEditDialog();
+
+                Window parent = SwingUtilities.getWindowAncestor(Controller.getInstance().getThumbnailPanel());
+
+                if (tagEditDialog == null) {
+                    tagEditDialog = new TagEditDialog(parent);
+
+                    GraphicsDevice[] screens = GraphicsEnvironment
+                            .getLocalGraphicsEnvironment()
+                            .getScreenDevices();
+
+                    GraphicsDevice rightScreen = screens[screens.length - 1];
+                    Rectangle bounds = rightScreen.getDefaultConfiguration().getBounds();
+
+
+                    int dialogWidth = 280;
+                    int dialogHeight = 400;
+                    tagEditDialog.setSize(dialogWidth, dialogHeight);
+                    tagEditDialog.setLocation(
+                            bounds.x + 20,
+                            bounds.y + bounds.height - dialogHeight - 50
+                    );
+                }
 
                 tagEditDialog.setFile(AppState.get().getCurrentFile(), true);
             }

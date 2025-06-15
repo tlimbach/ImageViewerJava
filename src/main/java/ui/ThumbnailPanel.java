@@ -255,7 +255,9 @@ public class ThumbnailPanel extends JPanel {
     private long currentGenerationId = 0;
     int processed = 0;
 
-    public void populate(List<File> mediaFiles) {
+    public void populate(List<File> _mediaFiles) {
+
+        List<File> mediaFiles = new ArrayList<>(_mediaFiles);
 
         long generation = ++currentGenerationId;
 

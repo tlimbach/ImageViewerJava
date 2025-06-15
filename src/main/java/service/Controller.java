@@ -100,6 +100,10 @@ public class Controller {
         return controlPanel;
     }
 
+    public ThumbnailPanel getThumbnailPanel(){
+        return thumbnailPanel;
+    }
+
     public List<File> getCurrentlyDisplayedFiles() {
         if (thumbnailPanel == null) return Collections.emptyList();
 
