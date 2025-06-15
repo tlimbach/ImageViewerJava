@@ -1,12 +1,17 @@
 package ui;
 
+import service.Controller;
+import service.ThumbnailCache;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 
 public class AnimatedThumbnail {
@@ -53,21 +58,20 @@ public class AnimatedThumbnail {
         } else {
             // Asynchron laden, aber nur einmal pro Index
             CompletableFuture.supplyAsync(() -> {
+                byte[] bytes = ThumbnailCache.getByteArray(imageFiles.get(idx));
+                if (bytes == null) return null; // <--- wichtig!
                 try {
-                    BufferedImage img = javax.imageio.ImageIO.read(imageFiles.get(idx));
-                    if (img != null) {
-                        return new ImageIcon(img);
-                    }
+                    BufferedImage img = javax.imageio.ImageIO.read(new ByteArrayInputStream(bytes));
+                    return img != null ? new ImageIcon(img) : null;
                 } catch (IOException e) {
                     e.printStackTrace();
+                    return null;
                 }
-                return null;
             }).thenAccept(icon -> {
                 if (icon != null && isRunning) {
                     cachedIcons.set(idx, icon);
                     SwingUtilities.invokeLater(() -> {
                         if ((currentIndex - 1) % imageFiles.size() == idx) {
-                            // Zeige nur dann das Bild, wenn es gerade dran ist
                             label.setIcon(icon);
                         }
                     });
@@ -94,5 +98,14 @@ public class AnimatedThumbnail {
             cachedIcons.clear();
             cachedIcons = null;
         }
+    }
+
+    public void preload() {
+        Controller.getInstance().getExecutorService().submit(()->{
+            for (int t=0; t<imageFiles.size(); t++) {
+                ThumbnailCache.getByteArray(imageFiles.get(t));
+            }
+        });
+
     }
 }

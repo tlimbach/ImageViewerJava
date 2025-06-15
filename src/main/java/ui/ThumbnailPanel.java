@@ -33,7 +33,7 @@ public class ThumbnailPanel extends JPanel {
 
     private final JScrollPane scrollPane;
 
-    private MouseListener mouseListener;
+    private final MouseListener mouseListener;
 
     private volatile File currentHoverFile;
 
@@ -433,6 +433,7 @@ public class ThumbnailPanel extends JPanel {
             if (animatedThumbnails.size() < 20) {
                 aNail.start();
             }
+            aNail.preload();
         }
     }
 
