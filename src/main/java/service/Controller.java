@@ -34,7 +34,7 @@ public class Controller {
     }
 
     private Controller() {
-        ex = Executors.newFixedThreadPool(2);
+        ex = Executors.newFixedThreadPool(4);
     }
 
 

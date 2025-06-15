@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
 
 public class AnimatedThumbnail {
     JLabel label;
@@ -101,11 +102,9 @@ public class AnimatedThumbnail {
     }
 
     public void preload() {
-        Controller.getInstance().getExecutorService().submit(()->{
-            for (int t=0; t<imageFiles.size(); t++) {
-                ThumbnailCache.getByteArray(imageFiles.get(t));
-            }
-        });
-
+        ExecutorService executor = Controller.getInstance().getExecutorService();
+        for (File file : imageFiles) {
+            executor.submit(() -> ThumbnailCache.getByteArray(file));
+        }
     }
 }
