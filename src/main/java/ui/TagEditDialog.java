@@ -69,13 +69,14 @@ public class TagEditDialog extends JDialog {
         checkBoxes.clear();
         newTagsField.setText("");
 
-        List<String> currentTags = TagHandler.getInstance().getTagsForFile(file.getAbsolutePath());
+        List<String> currentTags = TagHandler.getInstance().getTagsForFile(file.getName());
+
         List<String> allTags = new ArrayList<>(TagHandler.getInstance().allTags().keySet());
         Collections.sort(allTags, String.CASE_INSENSITIVE_ORDER);
 
         for (String tag : allTags) {
             JCheckBox box = new JCheckBox(tag);
-            box.addActionListener(a->saveTags());
+            box.addActionListener(a -> saveTags());
             box.setSelected(currentTags.contains(tag));
             checkBoxes.add(box);
             tagsPanel.add(box);
@@ -97,7 +98,7 @@ public class TagEditDialog extends JDialog {
             selectedTags.addAll(Arrays.asList(newTags));
         }
 
-        TagHandler.getInstance().setTagsToFile(selectedTags, file.getAbsolutePath());
+        TagHandler.getInstance().setTagsToFile(selectedTags, file.getName());
         EventBus.get().publish(new TagsChangedEvent());
     }
 }
