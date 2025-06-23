@@ -10,7 +10,9 @@ import uk.co.caprica.vlcj.player.component.CallbackMediaPlayerComponent;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
+
 import java.awt.*;
+import java.util.List;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.KeyEvent;
@@ -214,33 +216,44 @@ public class MediaView {
     }
 
     private void showImage(File file) {
+        BufferedImage image = null;
 
-        BufferedImage image = AppState.get().getPreloadedImage();
+        try {
+            if (file.getName().toLowerCase().endsWith(".mpo")) {
+                List<BufferedImage> frames = MpoReader.getFrames(file);
+                int parallax = 10;
+                image = AnaglyphUtils.createSimpleAnaglyph(frames.get(0), frames.get(1), parallax);
 
-        if (image == null) {
-            try {
-                image = ImageIO.read(file);
-            } catch (IOException e) {
-                e.printStackTrace();
-                return;
+            } else {
+                // Normales Bild oder Preload verwenden
+                image = AppState.get().getPreloadedImage();
+                if (image == null) {
+                    image = ImageIO.read(file);
+                } else {
+                    H.out("preload hat gezogen");
+                    AppState.get().setPreloadedImage(null);
+                }
             }
-        } else {
-            H.out("preload hat gezogen");
+        } catch (IOException e) {
+            e.printStackTrace();
+            return;
         }
-
-        AppState.get().setPreloadedImage(null);
 
         if (image == null) {
             System.err.println("Konnte Bild nicht laden: " + file);
             return;
         }
-        int rotation = RotationHandler.getInstance().getRotation(file);
 
+        // ✅ OPTIONAL: Auch Anaglyph kann rotiert werden, wenn du willst!
+        int rotation = RotationHandler.getInstance().getRotation(file);
         BufferedImage rotatedImage = H.rotate(image, rotation);
 
         int maxWidth = frame.getWidth();
         int maxHeight = frame.getHeight();
-        double scale = Math.min((double) maxWidth / rotatedImage.getWidth(), (double) maxHeight / rotatedImage.getHeight());
+        double scale = Math.min(
+                (double) maxWidth / rotatedImage.getWidth(),
+                (double) maxHeight / rotatedImage.getHeight()
+        );
 
         int newWidth = (int) (rotatedImage.getWidth() * scale);
         int newHeight = (int) (rotatedImage.getHeight() * scale);
@@ -256,7 +269,8 @@ public class MediaView {
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
         } else {
-            imageLabel.setIcon(new ImageIcon(rotatedImage.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH)));
+            BufferedImage highQuality = getHighQualityScaledImage(rotatedImage, newWidth, newHeight);
+            imageLabel.setIcon(new ImageIcon(highQuality));
             cardLayout.show(stackPanel, "image");
         }
 
@@ -383,5 +397,16 @@ public class MediaView {
 
     public void hideFrame() {
         frame.setVisible(false);
+    }
+
+    private BufferedImage getHighQualityScaledImage(BufferedImage src, int targetWidth, int targetHeight) {
+        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2d = resized.createGraphics();
+        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+        g2d.drawImage(src, 0, 0, targetWidth, targetHeight, null);
+        g2d.dispose();
+        return resized;
     }
 }

@@ -78,7 +78,7 @@ public class Controller {
 
     public static boolean isImageFile(File file) {
         String name = file.getName().toLowerCase();
-        return name.matches(".*\\.(jpg|jpeg|png|gif|bmp|webp)");
+        return name.matches(".*\\.(jpg|jpeg|png|gif|bmp|webp|mpo)");
     }
 
     public static boolean isVideoFile(File file) {

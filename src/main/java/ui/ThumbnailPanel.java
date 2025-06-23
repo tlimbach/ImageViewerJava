@@ -383,7 +383,12 @@ public class ThumbnailPanel extends JPanel {
 
                         // Aufwendig laden:
                         try {
-                            BufferedImage image = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
+                            BufferedImage image;
+                            if (file.getName().toLowerCase().endsWith(".mpo")) {
+                                image = MpoReader.getLeftFrame(AppState.get().getFileForCurrentDirectory(file));
+                            } else {
+                                image = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
+                            }
                             H.out("setting preloaded image " + file.getName());
                             AppState.get().setPreloadedImage(image);
                         } catch (IOException ex) {
@@ -399,8 +404,17 @@ public class ThumbnailPanel extends JPanel {
         boolean imagedOK = true;
 
         if (type == MEDIA_TYPE.IMAGE) {
+            BufferedImage original;
+
             try {
-                BufferedImage original = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
+                if (file.getName().toLowerCase().endsWith(".mpo")) {
+                    // Nur linkes Frame laden, perfekt für Thumbnails
+                    original = MpoReader.getLeftFrame(AppState.get().getFileForCurrentDirectory(file));
+                } else {
+                    // Normales Bild laden
+                    original = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
+                }
+
                 if (original == null) {
                     H.out("Problems remain " + file.getAbsoluteFile().toPath());
                     return;
