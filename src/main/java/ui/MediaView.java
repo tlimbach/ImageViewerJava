@@ -78,6 +78,14 @@ public class MediaView {
                     EventBus.get().publish(new UserKeyboardEvent("PAGE_UP"));
                 } else if (e.getKeyCode() == KeyEvent.VK_PAGE_DOWN) {
                     EventBus.get().publish(new UserKeyboardEvent("PAGE_DOWN"));
+                } else if (e.getKeyCode() == KeyEvent.VK_HOME) {
+                    EventBus.get().publish(new UserKeyboardEvent("HOME"));
+                } else if (e.getKeyCode() == KeyEvent.VK_END) {
+                    EventBus.get().publish(new UserKeyboardEvent("END"));
+                } else if (e.getKeyCode() == KeyEvent.VK_INSERT) {
+                    EventBus.get().publish(new UserKeyboardEvent("EINFG"));
+                } else if (e.getKeyCode() == KeyEvent.VK_DELETE) {
+                    EventBus.get().publish(new UserKeyboardEvent("ENTF"));
                 }
             }
         });
@@ -225,17 +233,29 @@ public class MediaView {
         }
     }
 
+    private List<BufferedImage> lastBufferedImages = null;
+    private File lastFile = null;
+
     private void showImage(File file) {
         BufferedImage image = null;
         H.out("loadign imgae again... " + file.getAbsolutePath());
         try {
             if (file.getName().toLowerCase().endsWith(".mpo")) {
-                List<BufferedImage> frames = MpoReader.getFrames(file);
+                List<BufferedImage> frames;
+                if (lastFile != null && lastFile.getAbsolutePath().equals(file.getAbsolutePath())) {
+                    frames = lastBufferedImages;
+                } else {
+                    frames = MpoReader.getFrames(file);
+                }
+
+                lastFile = file;
+                lastBufferedImages = frames;
+
                 double parallax = ParallaxHandler.getInstance().getParallaxForFile(file);
 //                image = AnaglyphUtils.createDuboisAnaglyph(frames.get(0), frames.get(1));
 //                image = AnaglyphUtils.createSimpleAnaglyph(frames.get(0), frames.get(1),parallax);
 //                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteA(frames.get(0), frames.get(1), parallax, 0.8f);
-                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1),parallax,0.9f, 1.0f);
+                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1), parallax, 0.9f, 1.0f);
 
             } else {
                 // Normales Bild oder Preload verwenden

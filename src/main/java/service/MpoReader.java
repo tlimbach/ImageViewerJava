@@ -22,16 +22,8 @@ public class MpoReader {
      * Gibt nur das linke Bild zurück (für Thumbnails etc.).
      */
     public static BufferedImage getLeftFrame(File mpoFile) throws IOException {
-        List<BufferedImage> frames = getFrames(mpoFile);
-        return frames.get(0);
+     return new JPGExtractor().createLeftThumbnailFromMpo(mpoFile, 450);
     }
 
-    /**
-     * Gibt nur das rechte Bild zurück (optional, selten genutzt).
-     */
-    public static BufferedImage getRightFrame(File mpoFile) throws IOException {
-        List<BufferedImage> frames = getFrames(mpoFile);
-        return frames.get(1);
-    }
 
 }

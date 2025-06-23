@@ -52,7 +52,7 @@ public class ParallaxHandler {
                 System.out.println("[ParallaxHandler] Parallax EVENT ausgelöst: " + parallax + " für " + current.getName());
             }
         };
-        timer.schedule(pendingTask, 200);
+        timer.schedule(pendingTask, 100);
     }
 
     private File getParallaxSettingsFile() {

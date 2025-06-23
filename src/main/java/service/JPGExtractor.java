@@ -5,13 +5,9 @@
  */
 package service;
 
+import java.awt.*;
 import java.awt.image.BufferedImage;
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -94,5 +90,62 @@ public class JPGExtractor {
             }
         }
         return ret;
+    }
+
+    public BufferedImage createLeftThumbnailFromMpo(File mpoFile, int maxWidth) throws IOException {
+        final byte[] sig1 = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xe0};
+        final byte[] sig2 = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xe1};
+
+        byte[] jpegBytes;
+
+        // 1) Bytes sammeln nur bis zweites JPEG
+        try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(mpoFile))) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] window = new byte[4];
+            int b, count = 0, found = 0;
+
+            while ((b = in.read()) != -1) {
+                buffer.write(b);
+                window[count % 4] = (byte) b;
+                count++;
+
+                if (count >= 4) {
+                    boolean match1 = true, match2 = true;
+                    for (int i = 0; i < 4; i++) {
+                        if (window[(count - 4 + i) % 4] != sig1[i]) match1 = false;
+                        if (window[(count - 4 + i) % 4] != sig2[i]) match2 = false;
+                    }
+                    if (match1 || match2) {
+                        found++;
+                        if (found == 2) break;
+                    }
+                }
+            }
+            jpegBytes = buffer.toByteArray();
+            // buffer: hier keine Referenz mehr → wird sammelbar
+        }
+
+        // 2) Erstes JPEG lesen & Thumbnail erstellen
+        BufferedImage original = null;
+        try (ByteArrayInputStream jpegStream = new ByteArrayInputStream(jpegBytes)) {
+            original = ImageIO.read(jpegStream);
+        }
+        jpegBytes = null; // explizit freigeben
+
+        int newWidth = maxWidth;
+        int newHeight = original.getHeight() * newWidth / original.getWidth();
+
+        Image tmp = original.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
+        original.flush(); // Speicher freigeben
+        original = null;  // Referenz lösen
+
+        BufferedImage thumbnail = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+        Graphics2D g2 = thumbnail.createGraphics();
+        g2.drawImage(tmp, 0, 0, null);
+        g2.dispose();
+        tmp.flush(); // sicherheitshalber
+
+        return thumbnail;
+
     }
 }

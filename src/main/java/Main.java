@@ -10,13 +10,13 @@ import java.util.concurrent.TimeUnit;
 
 public class Main {
     public static void main(String[] args) throws UnsupportedLookAndFeelException, ClassNotFoundException, InstantiationException, IllegalAccessException {
-
-        UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
-        new ImageViewer();
-
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(() -> {
             Controller.printMemoryUsage();
         }, 0, 3, TimeUnit.SECONDS);
+        UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
+        new ImageViewer();
+
+
     }
 }

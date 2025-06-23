@@ -81,19 +81,25 @@ public class ControlPanel extends JPanel {
         EventBus.get().register(UserKeyboardEvent.class, e -> {
             String direction = e.direction();
 
-            // Hier: PAGE_UP und PAGE_DOWN verarbeiten
+            // Hier: PAGE_UP und PAGE_DOWN (und weitere) verarbeiten
             if ("PAGE_UP".equals(direction)) {
-                // Erhöhe Slider um einen Schritt (1)
                 int value = sldParalaxe.getValue();
-                if (value < sldParalaxe.getMaximum()) {
-                    sldParalaxe.setValue(value + 1);
-                }
+                sldParalaxe.setValue(Math.min(value + 1, sldParalaxe.getMaximum()));
             } else if ("PAGE_DOWN".equals(direction)) {
-                // Verringere Slider um einen Schritt (1)
                 int value = sldParalaxe.getValue();
-                if (value > sldParalaxe.getMinimum()) {
-                    sldParalaxe.setValue(value - 1);
-                }
+                sldParalaxe.setValue(Math.max(value - 1, sldParalaxe.getMinimum()));
+            } else if ("HOME".equals(direction)) {
+                int value = sldParalaxe.getValue();
+                sldParalaxe.setValue(Math.min(value + 5, sldParalaxe.getMaximum()));
+            } else if ("END".equals(direction)) {
+                int value = sldParalaxe.getValue();
+                sldParalaxe.setValue(Math.max(value - 5, sldParalaxe.getMinimum()));
+            } else if ("EINFG".equals(direction)) {
+                int value = sldParalaxe.getValue();
+                sldParalaxe.setValue(Math.min(value + 50, sldParalaxe.getMaximum()));
+            } else if ("ENTF".equals(direction)) {
+                int value = sldParalaxe.getValue();
+                sldParalaxe.setValue(Math.max(value - 50, sldParalaxe.getMinimum()));
             }
         });
 
