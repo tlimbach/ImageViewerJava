@@ -135,7 +135,11 @@ public class JPGExtractor {
             g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
             g2.drawImage(original, 0, 0, newWidth, newHeight, null);
             g2.dispose();
+            g2 = null;
             original.flush();
+            jpegStream.close();
+            original = null;
+            jpegStream = null;
 
             H.out("took -> " + (System.currentTimeMillis() - now));
             return thumbnail;

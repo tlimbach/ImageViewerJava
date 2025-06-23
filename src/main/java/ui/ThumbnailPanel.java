@@ -351,22 +351,6 @@ public class ThumbnailPanel extends JPanel {
         label.putClientProperty("file", file);
         label.addMouseListener(mouseListener);
 
-
-//        label.addKeyListener(new KeyAdapter() {
-//            @Override
-//            public void keyPressed(KeyEvent e) {
-//                super.keyPressed(e);
-//                H.out("new pressed :" + e.getKeyCode());
-//            }
-//
-//            @Override
-//            public void keyTyped(KeyEvent e) {
-//                super.keyTyped(e);
-//                H.out("oidjwoidjwoid");
-//            }
-//        });
-
-
         label.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseEntered(MouseEvent e) {
@@ -404,29 +388,36 @@ public class ThumbnailPanel extends JPanel {
         boolean imagedOK = true;
 
         if (type == MEDIA_TYPE.IMAGE) {
-            BufferedImage original;
+            CompletableFuture.runAsync(() -> {
+                try {
+                    BufferedImage original;
 
-            try {
-                if (file.getName().toLowerCase().endsWith(".mpo")) {
-                    // Nur linkes Frame laden, perfekt für Thumbnails
-                    original = MpoReader.getLeftFrame(AppState.get().getFileForCurrentDirectory(file));
-                } else {
-                    // Normales Bild laden
-                    original = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
-                }
+                    File resolved = AppState.get().getFileForCurrentDirectory(file);
 
-                if (original == null) {
-                    H.out("Problems remain " + file.getAbsoluteFile().toPath());
-                    return;
-                } else {
+                    if (file.getName().toLowerCase().endsWith(".mpo")) {
+                        // Nur linkes Frame laden, perfekt für Thumbnails
+                        original = MpoReader.getLeftFrame(resolved);
+                    } else {
+                        // Normales Bild laden
+                        original = ImageIO.read(resolved);
+                    }
+
+                    if (original == null) {
+                        H.out("Problems remain " + file.getAbsoluteFile().toPath());
+                        return;
+                    }
+
                     int rotation = RotationHandler.getInstance().getRotation(file);
                     BufferedImage rotated = H.rotate(original, rotation);
                     Image scaled = getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
-                    label.setIcon(new ImageIcon(scaled));
+
+                    // UI-Update gehört auf den Swing-Thread!
+                    SwingUtilities.invokeLater(() -> label.setIcon(new ImageIcon(scaled)));
+
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
+            }, Controller.getInstance().getExecutorService());
         } else {
             Image image = Toolkit.getDefaultToolkit().getImage(thumbnailFiles.get(0).getAbsolutePath());
             label.setIcon(new ImageIcon(image));
