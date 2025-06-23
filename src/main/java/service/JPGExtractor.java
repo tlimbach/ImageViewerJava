@@ -93,59 +93,52 @@ public class JPGExtractor {
     }
 
     public BufferedImage createLeftThumbnailFromMpo(File mpoFile, int maxWidth) throws IOException {
+        long now = System.currentTimeMillis();
+
         final byte[] sig1 = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xe0};
         final byte[] sig2 = {(byte) 0xff, (byte) 0xd8, (byte) 0xff, (byte) 0xe1};
 
-        byte[] jpegBytes;
+        // Schätze: 1. JPEG ist ~500 KB. Lies nur das!
+        int estimatedSize = (int) (mpoFile.length()*52/100);
+        byte[] buffer = new byte[estimatedSize];
 
-        // 1) Bytes sammeln nur bis zweites JPEG
         try (BufferedInputStream in = new BufferedInputStream(new FileInputStream(mpoFile))) {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] window = new byte[4];
-            int b, count = 0, found = 0;
+            int bytesRead = in.read(buffer);
+            int found = 0;
 
-            while ((b = in.read()) != -1) {
-                buffer.write(b);
-                window[count % 4] = (byte) b;
-                count++;
-
-                if (count >= 4) {
-                    boolean match1 = true, match2 = true;
-                    for (int i = 0; i < 4; i++) {
-                        if (window[(count - 4 + i) % 4] != sig1[i]) match1 = false;
-                        if (window[(count - 4 + i) % 4] != sig2[i]) match2 = false;
-                    }
-                    if (match1 || match2) {
-                        found++;
-                        if (found == 2) break;
+            // Finde 2. JPEG Header
+            for (int i = 0; i < bytesRead - 4; i++) {
+                boolean match1 = true, match2 = true;
+                for (int j = 0; j < 4; j++) {
+                    if (buffer[i + j] != sig1[j]) match1 = false;
+                    if (buffer[i + j] != sig2[j]) match2 = false;
+                }
+                if (match1 || match2) {
+                    found++;
+                    if (found == 2) {
+                        bytesRead = i; // Limit auf Ende 1. JPEG
+                        break;
                     }
                 }
             }
-            jpegBytes = buffer.toByteArray();
-            // buffer: hier keine Referenz mehr → wird sammelbar
+
+            // Lies nur den Teil!
+            ByteArrayInputStream jpegStream = new ByteArrayInputStream(buffer, 0, bytesRead);
+            BufferedImage original = ImageIO.read(jpegStream);
+
+            // Schneller skalieren
+            int newWidth = maxWidth;
+            int newHeight = original.getHeight() * newWidth / original.getWidth();
+
+            BufferedImage thumbnail = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
+            Graphics2D g2 = thumbnail.createGraphics();
+            g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+            g2.drawImage(original, 0, 0, newWidth, newHeight, null);
+            g2.dispose();
+            original.flush();
+
+            H.out("took -> " + (System.currentTimeMillis() - now));
+            return thumbnail;
         }
-
-        // 2) Erstes JPEG lesen & Thumbnail erstellen
-        BufferedImage original = null;
-        try (ByteArrayInputStream jpegStream = new ByteArrayInputStream(jpegBytes)) {
-            original = ImageIO.read(jpegStream);
-        }
-        jpegBytes = null; // explizit freigeben
-
-        int newWidth = maxWidth;
-        int newHeight = original.getHeight() * newWidth / original.getWidth();
-
-        Image tmp = original.getScaledInstance(newWidth, newHeight, Image.SCALE_SMOOTH);
-        original.flush(); // Speicher freigeben
-        original = null;  // Referenz lösen
-
-        BufferedImage thumbnail = new BufferedImage(newWidth, newHeight, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g2 = thumbnail.createGraphics();
-        g2.drawImage(tmp, 0, 0, null);
-        g2.dispose();
-        tmp.flush(); // sicherheitshalber
-
-        return thumbnail;
-
     }
 }
