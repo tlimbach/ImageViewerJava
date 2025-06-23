@@ -70,12 +70,12 @@ public class ControlPanel extends JPanel {
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
             updateUntaggedFilesCount();
-            tagSelectionPanel.revalidateTags();
+            tagSelectionPanel.reloadTags();
         });
 
         EventBus.get().register(TagsChangedEvent.class, e->{
             updateUntaggedFilesCount();
-            tagSelectionPanel.revalidateTags();
+            tagSelectionPanel.reloadTags();
         });
 
         EventBus.get().register(UserKeyboardEvent.class, e -> {

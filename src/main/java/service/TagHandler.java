@@ -184,4 +184,36 @@ public class TagHandler {
             System.out.println("[Cleanup] Ungültige Einträge in media_tags.json entfernt.");
         }
     }
+
+    public void renameTag(String oldTag, String newTag) {
+        boolean changed = false;
+
+        for (String key : tagData.keySet()) {
+            JSONArray arr = tagData.optJSONArray(key);
+            if (arr == null) continue;
+
+            List<String> tags = new ArrayList<>();
+            for (int i = 0; i < arr.length(); i++) {
+                String tag = arr.optString(i, "").trim();
+                if (!tag.isEmpty()) {
+                    tags.add(tag.equals(oldTag) ? newTag : tag);
+                }
+            }
+
+            // Duplikate vermeiden, falls alter + neuer Tag gleichzeitig vorkamen
+            Set<String> uniqueTags = new LinkedHashSet<>(tags);
+
+            JSONArray newArr = new JSONArray();
+            for (String tag : uniqueTags) {
+                newArr.put(tag);
+            }
+
+            tagData.put(key, newArr);
+            changed = true;
+        }
+
+        if (changed) {
+            save();
+        }
+    }
 }
