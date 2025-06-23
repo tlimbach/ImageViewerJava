@@ -32,6 +32,10 @@ public class ControlPanel extends JPanel {
     private JSlider sldVolume;
     private JLabel lblVol;
 
+    private JLabel lblParalaxe;
+
+    private JSlider sldParalaxe;
+
     private RangeHandler rangeHandler = RangeHandler.getInstance();
     private TagSelectionPanel tagSelectionPanel;
     private TagEditDialog tagEditDialog;
@@ -47,6 +51,8 @@ public class ControlPanel extends JPanel {
         addSliderPositionControl();
         addVolumeControl();
         addTagControls();
+//        addBrillenSetup();
+        addParalaxeControl();
 
         add(H.makeHorizontalPanel(lblThumbnailsLoadedCount));
 
@@ -72,9 +78,30 @@ public class ControlPanel extends JPanel {
             tagSelectionPanel.revalidateTags();
         });
 
+        EventBus.get().register(UserKeyboardEvent.class, e -> {
+            String direction = e.direction();
+
+            // Hier: PAGE_UP und PAGE_DOWN verarbeiten
+            if ("PAGE_UP".equals(direction)) {
+                // Erhöhe Slider um einen Schritt (1)
+                int value = sldParalaxe.getValue();
+                if (value < sldParalaxe.getMaximum()) {
+                    sldParalaxe.setValue(value + 1);
+                }
+            } else if ("PAGE_DOWN".equals(direction)) {
+                // Verringere Slider um einen Schritt (1)
+                int value = sldParalaxe.getValue();
+                if (value > sldParalaxe.getMinimum()) {
+                    sldParalaxe.setValue(value - 1);
+                }
+            }
+        });
+
         updateUntaggedFilesCount();
 
     }
+
+
 
     private void addFileChooserButton() {
         JButton btnFileChooser = new JButton("Verzeichnis wählen");
@@ -223,6 +250,22 @@ public class ControlPanel extends JPanel {
         add(H.makeHorizontalPanel(new JLabel("Lautstärke"), sldVolume, lblVol));
     }
 
+    private void addParalaxeControl() {
+        lblParalaxe = new JLabel("---");
+
+        sldParalaxe = new JSlider(-100, 100, 0);
+        sldParalaxe.setMajorTickSpacing(10);   // große Ticks alle 10 (entspricht 1%)
+
+        sldParalaxe.addChangeListener(l -> {
+            double parallaxX = sldParalaxe.getValue() / 1000.0;
+            H.out("pa + " + parallaxX);
+            ParallaxHandler.getInstance().setParallaxForCurrentFile(parallaxX);
+            lblParalaxe.setText(String.format("%.2f%%", parallaxX * 100));
+        });
+
+        add(H.makeHorizontalPanel(new JLabel("PLX"), sldParalaxe, lblParalaxe));
+    }
+
     private void addTagControls() {
         JButton btnShowUntagged = new JButton("Untagged anzeigen");
 
@@ -312,7 +355,11 @@ public class ControlPanel extends JPanel {
             lblVol.setText("" + vol);
             sldVolume.setValue(vol);
         });
-
+        double parallax = ParallaxHandler.getInstance().getParallaxForFile(file);
+        SwingUtilities.invokeLater(() -> {
+            lblParalaxe.setText(String.format("%.2f%%", parallax * 100));
+            sldParalaxe.setValue((int) (parallax * 1000));
+        });
     }
 
     public boolean isAutostart() {

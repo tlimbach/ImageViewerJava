@@ -74,6 +74,10 @@ public class MediaView {
                     EventBus.get().publish(new UserKeyboardEvent("UP"));
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
                     EventBus.get().publish(new UserKeyboardEvent("DOWN"));
+                } else if (e.getKeyCode() == KeyEvent.VK_PAGE_UP) {
+                    EventBus.get().publish(new UserKeyboardEvent("PAGE_UP"));
+                } else if (e.getKeyCode() == KeyEvent.VK_PAGE_DOWN) {
+                    EventBus.get().publish(new UserKeyboardEvent("PAGE_DOWN"));
                 }
             }
         });
@@ -137,6 +141,12 @@ public class MediaView {
 
         EventBus.get().register(RotationChangedEvent.class, e -> {
             if (currentFile != null && currentFile.equals(e.file())) {
+                showImage(currentFile);
+            }
+        });
+
+        EventBus.get().register(ParalaxChangedEvent.class, e -> {
+            if (currentFile != null) {
                 showImage(currentFile);
             }
         });
@@ -217,12 +227,15 @@ public class MediaView {
 
     private void showImage(File file) {
         BufferedImage image = null;
-
+        H.out("loadign imgae again... " + file.getAbsolutePath());
         try {
             if (file.getName().toLowerCase().endsWith(".mpo")) {
                 List<BufferedImage> frames = MpoReader.getFrames(file);
-                int parallax = 10;
-                image = AnaglyphUtils.createSimpleAnaglyph(frames.get(0), frames.get(1), parallax);
+                double parallax = ParallaxHandler.getInstance().getParallaxForFile(file);
+//                image = AnaglyphUtils.createDuboisAnaglyph(frames.get(0), frames.get(1));
+//                image = AnaglyphUtils.createSimpleAnaglyph(frames.get(0), frames.get(1),parallax);
+//                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteA(frames.get(0), frames.get(1), parallax, 0.8f);
+                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1),parallax,0.8f, 1.0f);
 
             } else {
                 // Normales Bild oder Preload verwenden
