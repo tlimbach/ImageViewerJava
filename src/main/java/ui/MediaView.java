@@ -235,7 +235,7 @@ public class MediaView {
 //                image = AnaglyphUtils.createDuboisAnaglyph(frames.get(0), frames.get(1));
 //                image = AnaglyphUtils.createSimpleAnaglyph(frames.get(0), frames.get(1),parallax);
 //                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteA(frames.get(0), frames.get(1), parallax, 0.8f);
-                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1),parallax,0.8f, 1.0f);
+                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1),parallax,0.9f, 1.0f);
 
             } else {
                 // Normales Bild oder Preload verwenden
