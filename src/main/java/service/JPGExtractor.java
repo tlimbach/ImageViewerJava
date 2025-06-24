@@ -20,22 +20,12 @@ import javax.imageio.ImageIO;
  */
 public class JPGExtractor {
 
-    private static String preloadedMPOFileName;
-    private static byte[] preloadedMPOFileByteArray;
+
 
     public List<BufferedImage> createBufferdImageFromMpo(File mpoFile) throws FileNotFoundException, IOException {
         List<Long> mpoOffsets = new ArrayList<>();
-        byte[] allMyBytes = null;
+        byte[] allMyBytes =  Files.readAllBytes(mpoFile.toPath());
 
-        if (mpoFile.getName().equals(preloadedMPOFileName)) {
-            allMyBytes = preloadedMPOFileByteArray;
-            H.out("from cache!");
-        } else {
-            allMyBytes=   Files.readAllBytes(mpoFile.toPath());
-            preloadedMPOFileByteArray = allMyBytes;
-            preloadedMPOFileName = mpoFile.getName();
-            H.out("from disk");
-        }
         InputStream fs = new BufferedInputStream(new ByteArrayInputStream(allMyBytes));
         final int chunkLength = 16 * 4096;
         final byte[] sig1 = new byte[]{
