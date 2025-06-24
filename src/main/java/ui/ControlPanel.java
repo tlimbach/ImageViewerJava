@@ -96,10 +96,10 @@ public class ControlPanel extends JPanel {
                 sldParalaxe.setValue(Math.max(value - 5, sldParalaxe.getMinimum()));
             } else if ("EINFG".equals(direction)) {
                 int value = sldParalaxe.getValue();
-                sldParalaxe.setValue(Math.min(value + 50, sldParalaxe.getMaximum()));
+                sldParalaxe.setValue(Math.min(value + 20, sldParalaxe.getMaximum()));
             } else if ("ENTF".equals(direction)) {
                 int value = sldParalaxe.getValue();
-                sldParalaxe.setValue(Math.max(value - 50, sldParalaxe.getMinimum()));
+                sldParalaxe.setValue(Math.max(value - 20, sldParalaxe.getMinimum()));
             }
         });
 

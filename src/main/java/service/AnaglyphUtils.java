@@ -231,7 +231,9 @@ public class AnaglyphUtils {
     }
 
     private static float clamp(float v) {
-        return Math.max(0f, Math.min(1f, v));
+        if (v < 0f) return 0f;
+        if (v > 1f) return 1f;
+        return v;
     }
 
     private static int clip(int v) {
