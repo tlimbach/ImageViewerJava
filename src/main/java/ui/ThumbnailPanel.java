@@ -347,38 +347,27 @@ public class ThumbnailPanel extends JPanel {
 
 
         for (File file : mediaFiles) {
-            if (Controller.isImageFile(file)) {
-                CompletableFuture
-                        .supplyAsync(() -> loadImageThumbnail(file),
-                                Controller.getInstance().getExecutorService())
-                        .thenAccept(thumbFiles -> {
-                            if (generation != currentGenerationId) return;
-                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                                SwingUtilities.invokeLater(() -> {
-                                    if (generation != currentGenerationId) return;
-                                    addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.IMAGE, thumbFiles, file);
-                                    thumbnailsLoadedCount++;
-                                    EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
-                                });
-                            }
-                        });
-            } else if (Controller.isVideoFile(file)) {
-                CompletableFuture
-                        .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
-                                Controller.getInstance().getExecutorService())
-                        .thenAccept(thumbFiles -> {
-                            if (generation != currentGenerationId) return;
-                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                                SwingUtilities.invokeLater(() -> {
-                                    if (generation != currentGenerationId) return;
-                                    addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.VIDEO, thumbFiles, file);
-                                    thumbnailsLoadedCount++;
-                                    EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
-                                    updateVisibleThumbnails();
-                                });
-                            }
-                        });
-            }
+            MEDIA_TYPE type = Controller.isImageFile(file) ? MEDIA_TYPE.IMAGE :
+                    Controller.isVideoFile(file) ? MEDIA_TYPE.VIDEO : null;
+            if (type == null) continue;
+
+            CompletableFuture
+                    .supplyAsync(() -> type == MEDIA_TYPE.IMAGE
+                                    ? loadImageThumbnail(file)
+                                    : loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
+                            Controller.getInstance().getExecutorService())
+                    .thenAccept(thumbFiles -> {
+                        if (generation != currentGenerationId) return;
+                        if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                            SwingUtilities.invokeLater(() -> {
+                                if (generation != currentGenerationId) return;
+                                addThumbnailLabelTo(newGridPanel, type, thumbFiles, file);
+                                thumbnailsLoadedCount++;
+                                EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
+                                updateVisibleThumbnails();
+                            });
+                        }
+                    });
         }
 
     }
