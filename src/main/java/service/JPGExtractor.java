@@ -23,22 +23,6 @@ public class JPGExtractor {
     private static String preloadedMPOFileName;
     private static byte[] preloadedMPOFileByteArray;
 
-
-    public static void preload(File mpoFile) {
-        H.out("preloading " + mpoFile.getName());
-        preloadedMPOFileByteArray = null;
-        preloadedMPOFileName = null;
-        // naja, nicht ganz sauber...
-        Controller.getInstance().getExecutorService().submit(()->{
-            try {
-                preloadedMPOFileByteArray = Files.readAllBytes(mpoFile.toPath());
-                preloadedMPOFileName = mpoFile.getName();
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        });
-    }
-
     public List<BufferedImage> createBufferdImageFromMpo(File mpoFile) throws FileNotFoundException, IOException {
         List<Long> mpoOffsets = new ArrayList<>();
         byte[] allMyBytes = null;

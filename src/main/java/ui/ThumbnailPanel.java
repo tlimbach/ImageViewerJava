@@ -401,7 +401,10 @@ public class ThumbnailPanel extends JPanel {
                         try {
                             BufferedImage image;
                             if (file.getName().toLowerCase().endsWith(".mpo")) {
-                                JPGExtractor.preload(file);
+                                List<BufferedImage> images = new JPGExtractor().createBufferdImageFromMpo(file);
+                                double p = ParallaxHandler.getInstance().getParallaxForFile(file);
+                                image = AnaglyphUtils.createSimpleAnaglyphVarianteC(images.get(0), images.get(1), p, 0.8f, 1.0f);
+                                AppState.get().setPreloadedImage(image);
                             } else {
                                 image = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
                                 H.out("setting preloaded image " + file.getName());
