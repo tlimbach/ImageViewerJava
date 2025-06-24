@@ -160,7 +160,6 @@ public class ThumbnailPanel extends JPanel {
 
                 myLabel = selectedLabel;
 
-                // 🔑 Nur das, korrekt:
                 Rectangle r = selectedLabel.getBounds();
                 Rectangle viewRect = SwingUtilities.convertRectangle(
                         selectedLabel.getParent(), r, scrollPane.getViewport());
@@ -402,12 +401,13 @@ public class ThumbnailPanel extends JPanel {
                         try {
                             BufferedImage image;
                             if (file.getName().toLowerCase().endsWith(".mpo")) {
-                                image = MpoReader.getLeftFrame(AppState.get().getFileForCurrentDirectory(file));
+                                JPGExtractor.preload(file);
                             } else {
                                 image = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
+                                H.out("setting preloaded image " + file.getName());
+                                AppState.get().setPreloadedImage(image);
                             }
-                            H.out("setting preloaded image " + file.getName());
-                            AppState.get().setPreloadedImage(image);
+
                         } catch (IOException ex) {
                             throw new RuntimeException(ex);
                         }
