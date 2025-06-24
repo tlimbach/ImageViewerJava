@@ -55,8 +55,10 @@ public class ThumbnailPanel extends JPanel {
         add(scrollPane, BorderLayout.CENTER);
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
-            List<File> files = MediaService.getInstance().loadFilesFromDirectory();
-            Controller.getInstance().getExecutorService().submit(() -> populate(files));
+            Controller.getInstance().getExecutorService().submit(() -> {
+                List<File> files = MediaService.getInstance().loadFilesFromDirectory();
+                populate(files);
+            });
         });
 
         EventBus.get().register(RangeChangedEvent.class, e -> {

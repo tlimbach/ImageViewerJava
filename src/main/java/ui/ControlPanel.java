@@ -158,7 +158,9 @@ public class ControlPanel extends JPanel {
                 if (JFileChooser.APPROVE_SELECTION.equals(e.getActionCommand())) {
                     Path directory = chooser.getSelectedFile().toPath();
                     AppState.get().setCurrentDirectory(directory);
-                    EventBus.get().publish(new CurrentDirectoryChangedEvent());
+                    Controller.getInstance().getExecutorService().submit(() ->
+                            EventBus.get().publish(new CurrentDirectoryChangedEvent())
+                    );
                     dialog.dispose();
                 } else if (JFileChooser.CANCEL_SELECTION.equals(e.getActionCommand())) {
                     dialog.dispose();
