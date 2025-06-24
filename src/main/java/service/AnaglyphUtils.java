@@ -180,24 +180,37 @@ public class AnaglyphUtils {
 
         int pixelShift = (int) Math.round(parallax * right.getWidth());
 
-        int width = Math.min(left.getWidth(), right.getWidth() - Math.abs(pixelShift));
+        // Korrekte gemeinsame Breite ist die MINDEST-Größe, die auch nach Shift gültig ist.
+        int maxPossibleWidth;
+        if (pixelShift >= 0) {
+            maxPossibleWidth = Math.min(left.getWidth(), right.getWidth() - pixelShift);
+        } else {
+            maxPossibleWidth = Math.min(left.getWidth() + pixelShift, right.getWidth());
+        }
+        int width = Math.max(0, maxPossibleWidth); // Sicherheit
         int height = Math.min(left.getHeight(), right.getHeight());
 
         BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 
         float invBrightness = 1.0f / rightBrightnessFactor;
 
-        int[] leftPixels = left.getRGB(0, 0, width, height, null, 0, width);
-        int[] rightPixels = right.getRGB(Math.max(0, pixelShift), 0, width, height, null, 0, width);
+        int[] leftPixels = left.getRGB(0, 0, left.getWidth(), height, null, 0, left.getWidth());
+        int[] rightPixels = right.getRGB(0, 0, right.getWidth(), height, null, 0, right.getWidth());
         int[] resultPixels = new int[width * height];
 
         ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
         try {
             pool.submit(() -> IntStream.range(0, height).parallel().forEach(y -> {
-                int rowOffset = y * width;
+                int leftRowOffset = y * left.getWidth();
+                int rightRowOffset = y * right.getWidth();
+                int resultRowOffset = y * width;
+
                 for (int x = 0; x < width; x++) {
-                    int lx = rowOffset + x;
-                    int rx = rowOffset + x;
+                    int lx = leftRowOffset + x;
+                    int rx = rightRowOffset + x + pixelShift;
+
+                    if (lx < leftRowOffset || lx >= leftRowOffset + left.getWidth()) continue;
+                    if (rx < rightRowOffset || rx >= rightRowOffset + right.getWidth()) continue;
 
                     int leftPixel = leftPixels[lx];
                     int rightPixel = rightPixels[rx];
@@ -213,11 +226,10 @@ public class AnaglyphUtils {
                     float newBri = clamp((float) Math.pow(hsb[2], invBrightness));
 
                     int rgbRight = Color.HSBtoRGB(hsb[0], newSat, newBri);
-
                     int green = (rgbRight >> 8) & 0xFF;
                     int blue = rgbRight & 0xFF;
 
-                    resultPixels[lx] = (red << 16) | (green << 8) | blue;
+                    resultPixels[resultRowOffset + x] = (red << 16) | (green << 8) | blue;
                 }
             })).get();
         } catch (InterruptedException | ExecutionException e) {
