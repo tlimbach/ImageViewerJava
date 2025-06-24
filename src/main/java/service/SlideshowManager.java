@@ -18,8 +18,10 @@ public class SlideshowManager {
     private final MediaView mediaView = MediaView.getInstance();
 
     private final Timer repeatCheckTimer = new Timer(500, e -> checkRepeatVideo());
+    private boolean moveImages;
 
-    public void start(List<File> files, int durationSeconds) {
+    public void start(List<File> files, int durationSeconds, boolean moveImages) {
+        this.moveImages = moveImages;
         if (files == null || files.isEmpty()) return;
 
         this.files = new java.util.ArrayList<>(files);
@@ -91,5 +93,10 @@ public class SlideshowManager {
 
     public long getDurationMillis() {
         return durationSeconds*1000;
+    }
+
+
+    public boolean isMoveImages() {
+        return moveImages;
     }
 }

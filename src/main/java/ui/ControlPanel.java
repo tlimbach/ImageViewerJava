@@ -180,11 +180,12 @@ public class ControlPanel extends JPanel {
         txtDuration.setToolTipText("Anzeigedauer pro Bild (Sekunden)");
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
+        JCheckBox cbxMoveImage = new JCheckBox("Move..");
 
         btnStart.addActionListener(e -> {
             try {
                 int duration = Integer.parseInt(txtDuration.getText());
-                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration);
+                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration, cbxMoveImage.isSelected());
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "Bitte eine gültige Zahl für die Bilddauer eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
             }
@@ -192,7 +193,7 @@ public class ControlPanel extends JPanel {
 
         btnStop.addActionListener(e -> slideshowManager.stop());
 
-        add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Dauer"), txtDuration));
+        add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Dauer"), txtDuration, cbxMoveImage));
     }
 
     private void addPlaybackControls() {
@@ -386,6 +387,7 @@ public class ControlPanel extends JPanel {
         List<File> untagged = TagHandler.getInstance().getUntaggedFiles();
         txtUntaggedCount.setText("(" + untagged.size() + ")");
     }
+
 
 
 }

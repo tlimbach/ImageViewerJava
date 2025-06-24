@@ -1,5 +1,7 @@
 package ui;
 
+import service.Controller;
+
 import javax.swing.*;
 import java.awt.*;
 import java.awt.image.BufferedImage;
@@ -32,7 +34,7 @@ public class AnimatedImagePanel extends JPanel {
     private double panPhaseX = 0;
     private double panPhaseY = 1.7;
 
-    private double alteZoom =0;
+    private double alteZoom = 0;
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
         initialZoom = 0;
@@ -52,7 +54,10 @@ public class AnimatedImagePanel extends JPanel {
             panPhaseY += PAN_SPEED_Y;
             repaint();
         });
-        animationTimer.start();
+
+        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
+               animationTimer.start();
+        }
     }
 
     private BufferedImage toBufferedImage(Image img) {
@@ -78,7 +83,7 @@ public class AnimatedImagePanel extends JPanel {
 
         double zoomFactor = 1.0 + (Math.sin(zoomPhase) * 0.5 + 0.5) * MAX_ZOOM_VARIATION;
 
-        if (zoomFactor<alteZoom)
+        if (zoomFactor < alteZoom)
             zoomFactor = alteZoom;
 
         alteZoom = zoomFactor;
@@ -89,19 +94,19 @@ public class AnimatedImagePanel extends JPanel {
 
         System.out.println("Zoom faktor " + zoomFactor);
 
-        if (zoomFactor<initialZoom)
+        if (zoomFactor < initialZoom)
             zoomFactor = initialZoom;
 
         double zoom = baseScale * zoomFactor;
 
-        int iw = (int)(image.getWidth() * zoom);
-        int ih = (int)(image.getHeight() * zoom);
+        int iw = (int) (image.getWidth() * zoom);
+        int ih = (int) (image.getHeight() * zoom);
 
         int maxPanX = Math.max(0, (iw - getWidth()) / 2);
         int maxPanY = Math.max(0, (ih - getHeight()) / 2);
 
-        int dx = (int)(Math.sin(panPhaseX) * maxPanX);
-        int dy = (int)(Math.sin(panPhaseY) * maxPanY);
+        int dx = (int) (Math.sin(panPhaseX) * maxPanX);
+        int dy = (int) (Math.sin(panPhaseY) * maxPanY);
 
         int x = (getWidth() - iw) / 2 + dx;
         int y = (getHeight() - ih) / 2 + dy;
@@ -109,10 +114,13 @@ public class AnimatedImagePanel extends JPanel {
         g2.drawImage(image, x, y, iw, ih, null);
     }
 
+
     @Override
     public void addNotify() {
         super.addNotify();
-        animationTimer.start();
+        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
+            animationTimer.start();
+        }
     }
 
     @Override

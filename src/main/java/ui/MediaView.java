@@ -19,6 +19,7 @@ import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.util.concurrent.CompletableFuture;
 
 public class MediaView {
 
@@ -259,7 +260,24 @@ public class MediaView {
 //                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteA(frames.get(0), frames.get(1), parallax, 0.8f);
 //                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1), parallax, 0.9f, 1.0f);
                 long now = System.currentTimeMillis();
-                image = AnaglyphUtils.createSimpleAnaglyphVarianteC(frames.get(0), frames.get(1), parallax, 0.8f, 1.0f);
+
+                float threshold = 0.6f;
+                float factor = 0.6f;
+
+                CompletableFuture<BufferedImage> leftFuture = CompletableFuture.supplyAsync(
+                        () -> AnaglyphUtils.limitHighlights(frames.get(0), threshold, factor),
+                        Controller.getInstance().getExecutorService()
+                );
+
+                CompletableFuture<BufferedImage> rightFuture = CompletableFuture.supplyAsync(
+                        () -> AnaglyphUtils.limitHighlights(frames.get(1), threshold, factor),
+                        Controller.getInstance().getExecutorService()
+                );
+
+                BufferedImage left = leftFuture.join();
+                BufferedImage right = rightFuture.join();
+
+                image = AnaglyphUtils.createSimpleAnaglyphVarianteC(left, right, parallax, 0.8f, 1.0f);
                 H.out("anglyph "+ (System.currentTimeMillis()-now));
 
             } else {

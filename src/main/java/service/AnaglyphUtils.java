@@ -178,6 +178,8 @@ public class AnaglyphUtils {
             float rightBrightnessFactor,
             float rightSaturationFactor) {
 
+
+
         int pixelShift = (int) Math.round(parallax * right.getWidth());
 
         // Korrekte gemeinsame Breite ist die MINDEST-Größe, die auch nach Shift gültig ist.
@@ -250,5 +252,48 @@ public class AnaglyphUtils {
 
     private static int clip(int v) {
         return Math.max(0, Math.min(255, v));
+    }
+
+    /**
+     * Reduziert zu helle Pixel in einem Bild.
+     *
+     * @param img Das Eingabebild (wird nicht verändert)
+     * @param threshold Brightness-Schwelle (0.0 - 1.0), ab wann gedämpft wird, z.B. 0.9f
+     * @param factor Faktor (0.0 - 1.0), auf den die Helligkeit reduziert wird, z.B. 0.8f bedeutet 80% der alten Helligkeit.
+     * @return Ein neues Bild mit reduzierten Hotspots.
+     */
+
+
+    public static BufferedImage limitHighlights(BufferedImage img, float threshold, float factor) {
+        int w = img.getWidth();
+        int h = img.getHeight();
+        int[] pixels = img.getRGB(0, 0, w, h, null, 0, w);
+        int[] resultPixels = new int[w * h];
+
+        ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+        try {
+            pool.submit(() -> IntStream.range(0, pixels.length).parallel().forEach(i -> {
+                int rgb = pixels[i];
+                int r = (rgb >> 16) & 0xFF;
+                int g = (rgb >> 8) & 0xFF;
+                int b = rgb & 0xFF;
+
+                float[] hsb = Color.RGBtoHSB(r, g, b, null);
+                if (hsb[2] > threshold) {
+                    hsb[2] = threshold + (hsb[2] - threshold) * factor;
+                    hsb[2] = Math.min(1.0f, hsb[2]);
+                }
+
+                resultPixels[i] = Color.HSBtoRGB(hsb[0], hsb[1], hsb[2]);
+            })).get();
+        } catch (Exception e) {
+            e.printStackTrace();
+        } finally {
+            pool.shutdown();
+        }
+
+        BufferedImage result = new BufferedImage(w, h, BufferedImage.TYPE_INT_RGB);
+        result.setRGB(0, 0, w, h, resultPixels, 0, w);
+        return result;
     }
 }
