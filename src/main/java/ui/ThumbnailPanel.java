@@ -232,6 +232,40 @@ public class ThumbnailPanel extends JPanel {
         };
     }
 
+    private List<File> loadImageThumbnail(File imageFile) {
+        List<File> result = new ArrayList<>();
+        File thumbDir = getThumbnailCacheDir();
+        String thumbName = "thumb_" + imageFile.getName() + ".jpg";
+        File thumbFile = new File(thumbDir, thumbName);
+
+        if (!thumbFile.exists()) {
+            try {
+                BufferedImage original;
+                if (imageFile.getName().toLowerCase().endsWith(".mpo")) {
+                    original = MpoReader.getLeftFrame(imageFile);
+                } else {
+                    original = ImageIO.read(imageFile);
+                }
+                if (original == null) return result;
+
+                Image scaled = getScaledImagePreserveRatio(original, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+                BufferedImage resultImg = new BufferedImage(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT, BufferedImage.TYPE_INT_RGB);
+                Graphics2D g2 = resultImg.createGraphics();
+                g2.setColor(Color.DARK_GRAY);
+                g2.fillRect(0, 0, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+                g2.drawImage(scaled, 0, 0, null);
+                g2.dispose();
+
+                ImageIO.write(resultImg, "jpg", thumbFile);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+
+        result.add(thumbFile);
+        return result;
+    }
+
     public void reloadDirectory() {
         List<File> mediaFiles = MediaService.getInstance().loadFilesFromDirectory();
         populate(mediaFiles);
@@ -313,24 +347,32 @@ public class ThumbnailPanel extends JPanel {
 
 
         for (File file : mediaFiles) {
-
             if (Controller.isImageFile(file)) {
-                addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.IMAGE, Collections.singletonList(file), file);
-                thumbnailsLoadedCount++;
-                EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
+                CompletableFuture
+                        .supplyAsync(() -> loadImageThumbnail(file),
+                                Controller.getInstance().getExecutorService())
+                        .thenAccept(thumbFiles -> {
+                            if (generation != currentGenerationId) return;
+                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                                SwingUtilities.invokeLater(() -> {
+                                    if (generation != currentGenerationId) return;
+                                    addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.IMAGE, thumbFiles, file);
+                                    thumbnailsLoadedCount++;
+                                    EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
+                                });
+                            }
+                        });
             } else if (Controller.isVideoFile(file)) {
                 CompletableFuture
                         .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
                                 Controller.getInstance().getExecutorService())
                         .thenAccept(thumbFiles -> {
                             if (generation != currentGenerationId) return;
-
                             if (thumbFiles != null && !thumbFiles.isEmpty()) {
                                 SwingUtilities.invokeLater(() -> {
                                     if (generation != currentGenerationId) return;
                                     addThumbnailLabelTo(newGridPanel, MEDIA_TYPE.VIDEO, thumbFiles, file);
                                     thumbnailsLoadedCount++;
-
                                     EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
                                     updateVisibleThumbnails();
                                 });

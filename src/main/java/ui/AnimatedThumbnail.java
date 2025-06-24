@@ -57,10 +57,9 @@ public class AnimatedThumbnail {
         if (cached != null) {
             label.setIcon(cached);
         } else {
-            // Asynchron laden, aber nur einmal pro Index
             CompletableFuture.supplyAsync(() -> {
                 byte[] bytes = ThumbnailCache.getByteArray(imageFiles.get(idx));
-                if (bytes == null) return null; // <--- wichtig!
+                if (bytes == null) return null;
                 try {
                     BufferedImage img = javax.imageio.ImageIO.read(new ByteArrayInputStream(bytes));
                     return img != null ? new ImageIcon(img) : null;
