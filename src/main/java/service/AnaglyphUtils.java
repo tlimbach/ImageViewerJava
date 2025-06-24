@@ -2,6 +2,9 @@ package service;
 
 import java.awt.*;
 import java.awt.image.BufferedImage;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
+import java.util.stream.IntStream;
 
 public class AnaglyphUtils {
 
@@ -182,47 +185,48 @@ public class AnaglyphUtils {
 
         BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
 
-        // Precompute Gamma for brightness boost
-        float gamma = 1.0f / rightBrightnessFactor;
+        float invBrightness = 1.0f / rightBrightnessFactor;
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
+        int[] leftPixels = left.getRGB(0, 0, width, height, null, 0, width);
+        int[] rightPixels = right.getRGB(Math.max(0, pixelShift), 0, width, height, null, 0, width);
+        int[] resultPixels = new int[width * height];
 
-                int lx = x;
-                int rx = x + pixelShift;
+        ForkJoinPool pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors());
+        try {
+            pool.submit(() -> IntStream.range(0, height).parallel().forEach(y -> {
+                int rowOffset = y * width;
+                for (int x = 0; x < width; x++) {
+                    int lx = rowOffset + x;
+                    int rx = rowOffset + x;
 
-                if (rx < 0 || rx >= right.getWidth()) continue;
+                    int leftPixel = leftPixels[lx];
+                    int rightPixel = rightPixels[rx];
 
-                // Get left (red) and right (green, blue)
-                int leftPixel = left.getRGB(lx, y);
-                int rightPixel = right.getRGB(rx, y);
+                    int red = (leftPixel >> 16) & 0xFF;
 
-                int red = (leftPixel >> 16) & 0xFF;
+                    int rRaw = (rightPixel >> 16) & 0xFF;
+                    int gRaw = (rightPixel >> 8) & 0xFF;
+                    int bRaw = rightPixel & 0xFF;
 
-                // Decompose right RGB
-                int rRaw = (rightPixel >> 16) & 0xFF;
-                int gRaw = (rightPixel >> 8) & 0xFF;
-                int bRaw = rightPixel & 0xFF;
+                    float[] hsb = Color.RGBtoHSB(rRaw, gRaw, bRaw, null);
+                    float newSat = clamp(hsb[1] * rightSaturationFactor);
+                    float newBri = clamp((float) Math.pow(hsb[2], invBrightness));
 
-                // Convert to HSB
-                float[] hsb = Color.RGBtoHSB(rRaw, gRaw, bRaw, null);
+                    int rgbRight = Color.HSBtoRGB(hsb[0], newSat, newBri);
 
-                // Adjust saturation & brightness carefully
-                hsb[1] = clamp(hsb[1] * rightSaturationFactor);
-                hsb[2] = clamp((float) Math.pow(hsb[2], gamma));
+                    int green = (rgbRight >> 8) & 0xFF;
+                    int blue = rgbRight & 0xFF;
 
-                // Back to RGB
-                int rgbRight = Color.HSBtoRGB(hsb[0], hsb[1], hsb[2]);
-
-                int green = (rgbRight >> 8) & 0xFF;
-                int blue = rgbRight & 0xFF;
-
-                int rgb = (red << 16) | (green << 8) | blue;
-
-                result.setRGB(x, y, rgb);
-            }
+                    resultPixels[lx] = (red << 16) | (green << 8) | blue;
+                }
+            })).get();
+        } catch (InterruptedException | ExecutionException e) {
+            e.printStackTrace();
+        } finally {
+            pool.shutdown();
         }
 
+        result.setRGB(0, 0, width, height, resultPixels, 0, width);
         return result;
     }
 

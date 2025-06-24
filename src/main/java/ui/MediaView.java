@@ -245,23 +245,23 @@ public class MediaView {
                 if (lastFile != null && lastFile.getAbsolutePath().equals(file.getAbsolutePath())) {
                     frames = lastBufferedImages;
                 } else {
+                    long now = System.currentTimeMillis();
                     frames = MpoReader.getFrames(file);
+                    H.out("Loading MPO took " + (System.currentTimeMillis()-now));
                 }
 
                 lastFile = file;
                 lastBufferedImages = frames;
 
-                image = AppState.get().getPreloadedImage();
-                if (image == null) {
-                    double parallax = ParallaxHandler.getInstance().getParallaxForFile(file);
+                  double parallax = ParallaxHandler.getInstance().getParallaxForFile(file);
 //                image = AnaglyphUtils.createDuboisAnaglyph(frames.get(0), frames.get(1));
 //                image = AnaglyphUtils.createSimpleAnaglyph(frames.get(0), frames.get(1),parallax);
 //                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteA(frames.get(0), frames.get(1), parallax, 0.8f);
 //                image = AnaglyphUtils.createSimpleAnaglyphWithVarianteB(frames.get(0), frames.get(1), parallax, 0.9f, 1.0f);
-                  image = AnaglyphUtils.createSimpleAnaglyphVarianteC(frames.get(0), frames.get(1), parallax, 0.8f, 1.0f);
-                } else {
-                    AppState.get().setPreloadedImage(null);
-                }
+                long now = System.currentTimeMillis();
+                image = AnaglyphUtils.createSimpleAnaglyphVarianteC(frames.get(0), frames.get(1), parallax, 0.8f, 1.0f);
+                H.out("anglyph "+ (System.currentTimeMillis()-now));
+
             } else {
                 // Normales Bild oder Preload verwenden
                 image = AppState.get().getPreloadedImage();
