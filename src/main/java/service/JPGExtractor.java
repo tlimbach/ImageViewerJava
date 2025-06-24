@@ -8,6 +8,7 @@ package service;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.*;
+import java.nio.Buffer;
 import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.List;
@@ -22,7 +23,11 @@ public class JPGExtractor {
     private static String preloadedMPOFileName;
     private static byte[] preloadedMPOFileByteArray;
 
+
     public static void preload(File mpoFile) {
+        H.out("preloading " + mpoFile.getName());
+        preloadedMPOFileByteArray = null;
+        preloadedMPOFileName = null;
         // naja, nicht ganz sauber...
         Controller.getInstance().getExecutorService().submit(()->{
             try {

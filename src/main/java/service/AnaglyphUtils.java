@@ -169,6 +169,63 @@ public class AnaglyphUtils {
         return result;
     }
 
+    public static BufferedImage createSimpleAnaglyphVarianteC(
+            BufferedImage left, BufferedImage right,
+            double parallax,
+            float rightBrightnessFactor,
+            float rightSaturationFactor) {
+
+        int pixelShift = (int) Math.round(parallax * right.getWidth());
+
+        int width = Math.min(left.getWidth(), right.getWidth() - Math.abs(pixelShift));
+        int height = Math.min(left.getHeight(), right.getHeight());
+
+        BufferedImage result = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
+
+        // Precompute Gamma for brightness boost
+        float gamma = 1.0f / rightBrightnessFactor;
+
+        for (int y = 0; y < height; y++) {
+            for (int x = 0; x < width; x++) {
+
+                int lx = x;
+                int rx = x + pixelShift;
+
+                if (rx < 0 || rx >= right.getWidth()) continue;
+
+                // Get left (red) and right (green, blue)
+                int leftPixel = left.getRGB(lx, y);
+                int rightPixel = right.getRGB(rx, y);
+
+                int red = (leftPixel >> 16) & 0xFF;
+
+                // Decompose right RGB
+                int rRaw = (rightPixel >> 16) & 0xFF;
+                int gRaw = (rightPixel >> 8) & 0xFF;
+                int bRaw = rightPixel & 0xFF;
+
+                // Convert to HSB
+                float[] hsb = Color.RGBtoHSB(rRaw, gRaw, bRaw, null);
+
+                // Adjust saturation & brightness carefully
+                hsb[1] = clamp(hsb[1] * rightSaturationFactor);
+                hsb[2] = clamp((float) Math.pow(hsb[2], gamma));
+
+                // Back to RGB
+                int rgbRight = Color.HSBtoRGB(hsb[0], hsb[1], hsb[2]);
+
+                int green = (rgbRight >> 8) & 0xFF;
+                int blue = rgbRight & 0xFF;
+
+                int rgb = (red << 16) | (green << 8) | blue;
+
+                result.setRGB(x, y, rgb);
+            }
+        }
+
+        return result;
+    }
+
     private static float clamp(float v) {
         return Math.max(0f, Math.min(1f, v));
     }
