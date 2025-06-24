@@ -82,7 +82,7 @@ public class MediaView {
                     EventBus.get().publish(new UserKeyboardEvent("HOME"));
                 } else if (e.getKeyCode() == KeyEvent.VK_END) {
                     EventBus.get().publish(new UserKeyboardEvent("END"));
-                } else if (e.getKeyCode() == KeyEvent.VK_INSERT) {
+                } else if (e.getKeyCode() == KeyEvent.VK_INSERT || e.getKeyCode() == KeyEvent.VK_HELP) {
                     EventBus.get().publish(new UserKeyboardEvent("EINFG"));
                 } else if (e.getKeyCode() == KeyEvent.VK_DELETE) {
                     EventBus.get().publish(new UserKeyboardEvent("ENTF"));
