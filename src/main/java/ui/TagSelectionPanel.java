@@ -18,6 +18,8 @@ public class TagSelectionPanel extends JPanel {
     private final TagHandler handler = TagHandler.getInstance();
     private final List<JCheckBox> checkboxes = new ArrayList<>();
 
+    private final JCheckBox cbxAnyMatch = new JCheckBox("Any");
+
     public TagSelectionPanel() {
         setLayout(new BorderLayout());
 
@@ -29,8 +31,12 @@ public class TagSelectionPanel extends JPanel {
         scrollPane.getVerticalScrollBar().setUnitIncrement(8);
         scrollPane.setPreferredSize(new Dimension(200, 300)); // anpassbar
 
+        cbxAnyMatch.setSelected(true);
+        cbxAnyMatch.addActionListener(e -> fireTagSelectionChanged());
+
         add(scrollPane, BorderLayout.CENTER);
 
+        add(cbxAnyMatch, BorderLayout.SOUTH);
         // Initialer Load
         reloadTags();
     }
@@ -87,7 +93,7 @@ public class TagSelectionPanel extends JPanel {
     /** Informiert Controller über neue Selektion. */
     private void fireTagSelectionChanged() {
         List<String> selectedTags = getSelectedTags();
-        List<String> files = handler.getFilesForSelectedTags(selectedTags);
+        List<String> files = handler.getFilesForSelectedTags(selectedTags, cbxAnyMatch.isSelected());
         Controller.getInstance().setSelectedFiles(files);
     }
 

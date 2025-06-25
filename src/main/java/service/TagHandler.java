@@ -9,7 +9,6 @@ import org.json.JSONTokener;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.*;
 
 public class TagHandler {
@@ -106,7 +105,7 @@ public class TagHandler {
         return tagCounts;
     }
 
-    public List<String> getFilesForSelectedTags(List<String> selectedTags) {
+    public List<String> getFilesForSelectedTags(List<String> selectedTags, boolean matchAllTags) {
         if (selectedTags == null || selectedTags.isEmpty()) return null;
 
         List<String> matchingFiles = new ArrayList<>();
@@ -121,11 +120,21 @@ public class TagHandler {
                         fileTags.add(tag);
                     }
                 }
-                if (!Collections.disjoint(fileTags, selectedTags)) {
-                     matchingFiles.add(key);
+
+                if (matchAllTags) {
+                    // Mindestens ein Tag muss übereinstimmen (ODER-Logik)
+                    if (!Collections.disjoint(fileTags, selectedTags)) {
+                        matchingFiles.add(key);
+                    }
+                } else {
+                    // Alle Tags müssen enthalten sein (UND-Logik)
+                    if (fileTags.containsAll(selectedTags)) {
+                        matchingFiles.add(key);
+                    }
                 }
             }
         }
+
         return matchingFiles;
     }
 
