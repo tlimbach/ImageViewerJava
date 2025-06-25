@@ -1,6 +1,8 @@
 package service;
 
 import event.CurrentlySelectedFileEvent;
+import event.MediaviewPlayEvent;
+import model.AppState;
 import ui.MediaView;
 
 import javax.swing.*;
@@ -43,6 +45,9 @@ public class SlideshowManager {
         }
 
         File file = files.get(currentIndex);
+        AppState.get().setCurrentFile(file);
+        EventBus.get().publish(new MediaviewPlayEvent(true));
+
         endTime = System.currentTimeMillis() + durationSeconds * 1000L;
 
         if (Controller.isImageFile(file)) {

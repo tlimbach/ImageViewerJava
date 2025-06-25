@@ -175,6 +175,34 @@ public class ThumbnailPanel extends JPanel {
 
 
         });
+
+        EventBus.get().register(MediaviewPlayEvent.class, e -> {
+            File current = AppState.get().getCurrentFile();
+            if (current == null) return;
+
+            for (AnimatedThumbnail thumb : animatedThumbnails) {
+                File thumbFile = (File) thumb.label.getClientProperty("file");
+                if (thumbFile != null && thumbFile.equals(current)) {
+
+                    SwingUtilities.invokeLater(() -> {
+                        if (selectedLabel != null) {
+                            selectedLabel.setBorder(null);
+                        }
+
+                        selectedLabel = thumb.label;
+                        selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+                        myLabel = selectedLabel;
+
+                        Rectangle r = selectedLabel.getBounds();
+                        Rectangle viewRect = SwingUtilities.convertRectangle(
+                                selectedLabel.getParent(), r, scrollPane.getViewport());
+                        scrollPane.getViewport().scrollRectToVisible(viewRect);
+                    });
+
+                    break;
+                }
+            }
+        });
     }
 
     private MouseAdapter createMouseListener() {
@@ -382,6 +410,10 @@ public class ThumbnailPanel extends JPanel {
         label.setBackground(Color.DARK_GRAY);
         label.putClientProperty("file", file);
         label.addMouseListener(mouseListener);
+
+//        in slideshow angezeigtes bild soll in thumbailview angezeigt werden
+
+
 
         label.addMouseListener(new MouseAdapter() {
             @Override

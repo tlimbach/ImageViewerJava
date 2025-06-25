@@ -37,12 +37,29 @@ public class EventBus {
     /**
      * Ein Event veröffentlichen
      */
-    @SuppressWarnings("unchecked")
+//    @SuppressWarnings("unchecked")
+//    public <E> void publish(E event) {
+//        List<Consumer<?>> list = listeners.get(event.getClass());
+//        if (list != null) {
+//            for (Consumer<?> raw : list) {
+//                ((Consumer<E>) raw).accept(event);
+//            }
+//        }
+//    }
+
     public <E> void publish(E event) {
         List<Consumer<?>> list = listeners.get(event.getClass());
         if (list != null) {
             for (Consumer<?> raw : list) {
-                ((Consumer<E>) raw).accept(event);
+                Consumer<E> listener = (Consumer<E>) raw;
+                Controller.getInstance().getExecutorService().submit(() -> {
+                    try {
+                        listener.accept(event);
+                    } catch (Exception ex) {
+                        System.err.println("Event listener error: " + ex.getMessage());
+                        ex.printStackTrace();
+                    }
+                });
             }
         }
     }

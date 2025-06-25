@@ -1,6 +1,9 @@
 package ui;
 
+import event.CurrentDirectoryChangedEvent;
 import service.Controller;
+import service.EventBus;
+import service.H;
 import service.TagHandler;
 
 import javax.swing.*;
@@ -39,6 +42,11 @@ public class TagSelectionPanel extends JPanel {
         add(cbxAnyMatch, BorderLayout.SOUTH);
         // Initialer Load
         reloadTags();
+
+        EventBus.get().register(CurrentDirectoryChangedEvent.class, e->{
+            handler.load();
+            reloadTags();
+        });
     }
 
     /** Lädt aktuelle Tags neu aus dem Handler. */
@@ -47,10 +55,10 @@ public class TagSelectionPanel extends JPanel {
     }
 
     /** Baut die Checkboxen neu auf. */
-    public void setTags(Map<String, Integer> tags) {
+    public synchronized  void setTags(Map<String, Integer> tags) {
         checkboxPanel.removeAll();
         checkboxes.clear();
-
+        H.out("keyset size " + tags.keySet().size());
         List<String> sortedTags = new ArrayList<>(tags.keySet());
         sortedTags.sort(String.CASE_INSENSITIVE_ORDER);
 

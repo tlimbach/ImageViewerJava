@@ -61,7 +61,7 @@ public class TagHandler {
         save();
     }
 
-    private void load() {
+    public void load() {
         File file = getTagFile();
         if (!file.exists()) {
             tagData = new JSONObject();
