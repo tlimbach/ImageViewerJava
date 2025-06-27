@@ -1,6 +1,7 @@
 package ui;
 
 import service.Controller;
+import service.H;
 import service.ThumbnailCache;
 
 import javax.swing.*;

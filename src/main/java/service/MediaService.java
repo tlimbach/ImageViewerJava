@@ -3,6 +3,7 @@ package service;
 import event.CurrentDirectoryChangedEvent;
 import model.AppState;
 
+import javax.swing.*;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -23,6 +24,7 @@ public class MediaService {
 
 
     public List<File> loadFilesFromDirectory(){
+        H.out("load files from dfirectopry " + SwingUtilities.isEventDispatchThread());
         File[] files = AppState.get().getCurrentDirectory().toFile().listFiles();
         if (files == null) return null;
 

@@ -337,42 +337,38 @@ public class ThumbnailPanel extends JPanel {
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
 
-        newGridPanel.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                super.keyPressed(e);
-                H.out("new pressed :" + e.getKeyCode());
-            }
-
-            @Override
-            public void keyReleased(KeyEvent e) {
-                super.keyReleased(e);
-                H.out("jdoiwjdiojwoid");
-            }
-
-            @Override
-            public void keyTyped(KeyEvent e) {
-                super.keyTyped(e);
-                H.out("oidjwoidjwoid");
-            }
-        });
+//        newGridPanel.addKeyListener(new KeyAdapter() {
+//            @Override
+//            public void keyPressed(KeyEvent e) {
+//                super.keyPressed(e);
+//                H.out("new pressed :" + e.getKeyCode());
+//            }
+//
+//            @Override
+//            public void keyReleased(KeyEvent e) {
+//                super.keyReleased(e);
+//            }
+//
+//            @Override
+//            public void keyTyped(KeyEvent e) {
+//                super.keyTyped(e);
+//            }
+//        });
 
 
         // Viewport-Listener an neuen Panel binden
         scrollPane.setViewportView(newGridPanel);
-        scrollPane.addKeyListener(new KeyAdapter() {
-            @Override
-            public void keyPressed(KeyEvent e) {
-                super.keyPressed(e);
-                H.out("new pressed :" + e.getKeyCode());
-            }
-
-            @Override
-            public void keyTyped(KeyEvent e) {
-                super.keyTyped(e);
-                H.out("oidjwoidjwoid");
-            }
-        });
+//        scrollPane.addKeyListener(new KeyAdapter() {
+//            @Override
+//            public void keyPressed(KeyEvent e) {
+//                super.keyPressed(e);
+//            }
+//
+//            @Override
+//            public void keyTyped(KeyEvent e) {
+//                super.keyTyped(e);
+//            }
+//        });
 
 
         for (File file : mediaFiles) {

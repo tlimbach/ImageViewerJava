@@ -39,6 +39,10 @@ public class ControlPanel extends JPanel {
     private RangeHandler rangeHandler = RangeHandler.getInstance();
     private TagSelectionPanel tagSelectionPanel;
     private TagEditDialog tagEditDialog;
+    private long lastSliderEventTime;
+
+    private boolean isUserDraggingSlider = false;
+    private long lastUserSliderChange = 0;
 
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
@@ -241,14 +245,28 @@ public class ControlPanel extends JPanel {
 
     private void addSliderPositionControl() {
         sldMoviePosition.addChangeListener(c -> {
-            if (!isUpdatingFromCode && !sldMoviePosition.getValueIsAdjusting()) {
-                EventBus.get().publish(new CurrentPlaybackSliderPosEvent((float) sldMoviePosition.getValue() / (float) sldMoviePosition.getMaximum()));
-
+            if (sldMoviePosition.getValueIsAdjusting()) {
+                isUserDraggingSlider = true;
             }
         });
+
+        sldMoviePosition.addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mousePressed(java.awt.event.MouseEvent e) {
+                isUserDraggingSlider = true;
+            }
+
+            @Override
+            public void mouseReleased(java.awt.event.MouseEvent e) {
+                isUserDraggingSlider = false;
+                lastUserSliderChange = System.currentTimeMillis();
+                EventBus.get().publish(new CurrentPlaybackSliderPosEvent(
+                        (float) sldMoviePosition.getValue() / (float) sldMoviePosition.getMaximum()));
+            }
+        });
+
         add(H.makeHorizontalPanel(new JLabel("Pos"), sldMoviePosition, lblPosition));
     }
-
     private void addVolumeControl() {
         lblVol = new JLabel("---");
         sldVolume = new JSlider();
@@ -325,6 +343,10 @@ public class ControlPanel extends JPanel {
     }
 
     public void setCurrentPlayPosMillis(long millis, long total) {
+
+
+
+        H.out("cppp " + millis);
         if (total <= 0) return;
         int pos = (int) (sldMoviePosition.getMaximum() * millis / total);
         long sec = millis / 1000;
@@ -333,9 +355,12 @@ public class ControlPanel extends JPanel {
         String time = String.format("%02d:%02d (%d)", min, sec, millis / 1000);
 
         SwingUtilities.invokeLater(() -> {
-            isUpdatingFromCode = true;
-            sldMoviePosition.setValue(pos);
-            isUpdatingFromCode = false;
+            long now = System.currentTimeMillis();
+            if (!isUserDraggingSlider && now - lastUserSliderChange > 1000) {
+                isUpdatingFromCode = true;
+                sldMoviePosition.setValue(pos);
+                isUpdatingFromCode = false;
+            }
             lblPosition.setText(time);
         });
     }

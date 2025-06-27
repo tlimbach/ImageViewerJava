@@ -9,6 +9,9 @@ import service.SettingsService;
 import javax.swing.*;
 import java.awt.*;
 import java.nio.file.Path;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class ImageViewer {
 
@@ -55,7 +58,11 @@ public class ImageViewer {
 
         frame.setTitle("Image Viewer - " + AppState.get().getCurrentDirectory());
 
-        thumbnailPanel.reloadDirectory();
+//        Controller.getInstance().getExecutorService().submit(()->thumbnailPanel.reloadDirectory());
 
+        ScheduledExecutorService executor = Executors.newSingleThreadScheduledExecutor();
+        executor.schedule(() -> {
+            thumbnailPanel.reloadDirectory(); // Achtung: darf hier kein UI-Zugriff enthalten sein!
+        }, 500, TimeUnit.MILLISECONDS);
     }
 }

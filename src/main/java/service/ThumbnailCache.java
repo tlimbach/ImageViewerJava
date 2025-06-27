@@ -19,8 +19,8 @@ public class ThumbnailCache {
         try {
             bytes = Files.readAllBytes(file.toPath());
             map.put(file, bytes);
-            H.out("added file "+ file.getAbsolutePath() + " " + file.length());
-            H.out("total cache files: " + map.size());
+//            H.out("added file "+ file.getAbsolutePath() + " " + file.length());
+//            H.out("total cache files: " + map.size());
             return bytes;
         } catch (IOException e) {
             e.printStackTrace();
