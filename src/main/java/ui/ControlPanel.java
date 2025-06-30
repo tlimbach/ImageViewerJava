@@ -260,8 +260,12 @@ public class ControlPanel extends JPanel {
             public void mouseReleased(java.awt.event.MouseEvent e) {
                 isUserDraggingSlider = false;
                 lastUserSliderChange = System.currentTimeMillis();
+
+                // Jetzt explizit als vom Benutzer gesetzt markieren
+                isUpdatingFromCode = true;
                 EventBus.get().publish(new CurrentPlaybackSliderPosEvent(
                         (float) sldMoviePosition.getValue() / (float) sldMoviePosition.getMaximum()));
+                isUpdatingFromCode = false;
             }
         });
 
@@ -356,7 +360,7 @@ public class ControlPanel extends JPanel {
 
         SwingUtilities.invokeLater(() -> {
             long now = System.currentTimeMillis();
-            if (!isUserDraggingSlider && now - lastUserSliderChange > 1000) {
+            if (!isUserDraggingSlider && now - lastUserSliderChange > 1000 && !isUpdatingFromCode) {
                 isUpdatingFromCode = true;
                 sldMoviePosition.setValue(pos);
                 isUpdatingFromCode = false;
