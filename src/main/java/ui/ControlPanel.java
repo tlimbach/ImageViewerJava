@@ -19,6 +19,8 @@ public class ControlPanel extends JPanel {
     private final JTextField txtTimerangeStart = new JTextField(5);
     private final JTextField txtTimerangeEnde = new JTextField(5);
     private final JCheckBox cbxIgnoreTimerange = new JCheckBox("Z. ignorieren");
+
+    private final JButton btnCreateAutoTimerane = new JButton("Automatisch erzeugen");
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
 
     private final JSlider sldMoviePosition = new JSlider();
@@ -224,7 +226,7 @@ public class ControlPanel extends JPanel {
     private void addRangeControls() {
         JButton btnSaveRange = new JButton("übernehmen");
         add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
-        add(H.makeHorizontalPanel(btnSaveRange, cbxIgnoreTimerange));
+        add(H.makeHorizontalPanel(btnSaveRange, cbxIgnoreTimerange, btnCreateAutoTimerane));
         btnSaveRange.addActionListener(a -> {
             try {
                 double start = Double.parseDouble(txtTimerangeStart.getText());
@@ -236,6 +238,25 @@ public class ControlPanel extends JPanel {
                 JOptionPane.showMessageDialog(this, "Bitte gültige Zahlen für Start und Ende eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
             }
         });
+
+        btnCreateAutoTimerane.addActionListener(a -> {
+            List<File> files = Controller.getInstance().getCurrentlyDisplayedFiles();
+
+            for (File file : files) {
+                if (RangeHandler.getInstance().getRangeForFile(file) == null) {
+
+                    double duration = RangeHandler.getInstance().getDuration(file);
+                    int start = (int) Math.round(duration * 0.2);
+                    int end = (int) Math.round(duration * 0.8);
+
+                    H.out("setting range for file ... " + file.getName() + " duration: " + duration);
+                    RangeHandler.getInstance().setRangeForFile(start, end, file);
+                }
+            }
+
+            updateUntaggedFilesCount();
+        });
+
 
         cbxIgnoreTimerange.addActionListener(l -> {
             AppState.get().setIgnoreTimerange(cbxIgnoreTimerange.isSelected());
@@ -350,7 +371,7 @@ public class ControlPanel extends JPanel {
 
 
 
-        H.out("cppp " + millis);
+//        H.out("cppp " + millis);
         if (total <= 0) return;
         int pos = (int) (sldMoviePosition.getMaximum() * millis / total);
         long sec = millis / 1000;

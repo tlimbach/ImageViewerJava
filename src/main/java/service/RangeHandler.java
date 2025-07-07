@@ -112,6 +112,29 @@ public class RangeHandler {
         }
     }
 
+    public double getDuration(File file) {
+        try {
+            ProcessBuilder pb = new ProcessBuilder(
+                    "ffprobe",
+                    "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    file.getAbsolutePath()
+            );
+            pb.redirectErrorStream(true);
+            Process process = pb.start();
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
+                String line = reader.readLine();
+                if (line != null) {
+                    return Double.parseDouble(line.trim());
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("Fehler beim Lesen der Dauer mit ffprobe: " + e.getMessage());
+        }
+        return 0;
+    }
+
     public static class Range {
         public final double start;
         public final double end;

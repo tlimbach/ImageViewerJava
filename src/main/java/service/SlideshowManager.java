@@ -54,9 +54,9 @@ public class SlideshowManager {
             mediaView.display(file, false);
             scheduleNext();
         } else if (Controller.isVideoFile(file)) {
-            EventBus.get().publish(new CurrentlySelectedFileEvent(file));
-            mediaView.getLeftBar().start(durationSeconds * 1000L);
             mediaView.display(file, true);
+            mediaView.getLeftBar().start(durationSeconds * 1000L);
+            EventBus.get().publish(new CurrentlySelectedFileEvent(file));
         }
     }
 

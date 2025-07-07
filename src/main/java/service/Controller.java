@@ -109,8 +109,10 @@ public class Controller {
 
         List<File> files = new ArrayList<>();
         for (AnimatedThumbnail thumb : thumbnailPanel.animatedThumbnails) {
-            File file = new File(AppState.get().getCurrentDirectory().toFile(), thumb.filename);
-            files.add(file);
+            if (thumb.filename != null) {
+                File file = new File(AppState.get().getCurrentDirectory().toFile(), thumb.filename);
+                files.add(file);
+            }
         }
 
         return files;
