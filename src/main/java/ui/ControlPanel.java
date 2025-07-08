@@ -20,7 +20,7 @@ public class ControlPanel extends JPanel {
     private final JTextField txtTimerangeEnde = new JTextField(5);
     private final JCheckBox cbxIgnoreTimerange = new JCheckBox("Z. ignorieren");
 
-    private final JButton btnCreateAutoTimerane = new JButton("Automatisch erzeugen");
+
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
 
     private final JSlider sldMoviePosition = new JSlider();
@@ -225,6 +225,8 @@ public class ControlPanel extends JPanel {
 
     private void addRangeControls() {
         JButton btnSaveRange = new JButton("übernehmen");
+        JButton btnCreateAutoTimerane = new JButton("Auto");
+        btnCreateAutoTimerane.setToolTipText("Zeitbereich automatisch anlegen");
         add(H.makeHorizontalPanel(new JLabel("von"), txtTimerangeStart, new JLabel("bis"), txtTimerangeEnde));
         add(H.makeHorizontalPanel(btnSaveRange, cbxIgnoreTimerange, btnCreateAutoTimerane));
         btnSaveRange.addActionListener(a -> {
