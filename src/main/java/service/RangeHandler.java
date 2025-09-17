@@ -35,15 +35,14 @@ public class RangeHandler {
 
         double start = rangeObj.optDouble("start", 0.0);
         double end = rangeObj.optDouble("end", 0.0);
+        int length = rangeObj.optInt("end", 0);
 
-        return new Range(start, end);
+        return new Range(start, end, length);
     }
 
     private File getRangesettingsFile() {
         Path settingsDir = AppState.get().getSettingsDirectory();
-        return settingsDir != null
-                ? settingsDir.resolve("video_ranges.json").toFile()
-                : new File("video_ranges.json"); // Fallback (optional)
+        return settingsDir != null ? settingsDir.resolve("video_ranges.json").toFile() : new File("video_ranges.json"); // Fallback (optional)
     }
 
     public void setRangeForFile(double start, double end, File file) {
@@ -55,6 +54,7 @@ public class RangeHandler {
             JSONObject rangeObj = new JSONObject();
             rangeObj.put("start", start);
             rangeObj.put("end", end);
+            rangeObj.put("length", (int) RangeHandler.getInstance().getDuration(file));
             rangeData.put(key, rangeObj);
         }
 
@@ -114,13 +114,7 @@ public class RangeHandler {
 
     public double getDuration(File file) {
         try {
-            ProcessBuilder pb = new ProcessBuilder(
-                    "ffprobe",
-                    "-v", "error",
-                    "-show_entries", "format=duration",
-                    "-of", "default=noprint_wrappers=1:nokey=1",
-                    file.getAbsolutePath()
-            );
+            ProcessBuilder pb = new ProcessBuilder("ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", file.getAbsolutePath());
             pb.redirectErrorStream(true);
             Process process = pb.start();
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(process.getInputStream()))) {
@@ -135,13 +129,23 @@ public class RangeHandler {
         return 0;
     }
 
+    public int getTotalLength(File file) {
+        Range range = getRangeForFile(file);
+        if (range != null) {
+            return range.totalLength;
+        } else return -1;
+    }
+
     public static class Range {
         public final double start;
         public final double end;
 
-        public Range(double start, double end) {
+        public final int totalLength;
+
+        public Range(double start, double end, int totalLength) {
             this.start = start;
             this.end = end;
+            this.totalLength = totalLength;
         }
     }
 }

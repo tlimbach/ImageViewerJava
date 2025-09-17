@@ -249,7 +249,7 @@ public class ControlPanel extends JPanel {
 
                     double duration = RangeHandler.getInstance().getDuration(file);
                     int start = (int) Math.round(duration * 0.2);
-                    int end = (int) Math.round(duration * 0.8);
+                    int end = (int) Math.round(duration);
 
                     H.out("setting range for file ... " + file.getName() + " duration: " + duration);
                     RangeHandler.getInstance().setRangeForFile(start, end, file);

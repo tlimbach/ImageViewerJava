@@ -1,6 +1,7 @@
 package ui;
 
 import event.CurrentDirectoryChangedEvent;
+import model.AppState;
 import service.Controller;
 import service.EventBus;
 import service.H;
@@ -8,6 +9,8 @@ import service.TagHandler;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
@@ -22,6 +25,11 @@ public class TagSelectionPanel extends JPanel {
     private final List<JCheckBox> checkboxes = new ArrayList<>();
 
     private final JCheckBox cbxAnyMatch = new JCheckBox("Any");
+
+
+    private final JTextField txtMinduration = new JTextField(5);
+
+    private JButton btnApplyMinDuration = new JButton("ok");
 
     public TagSelectionPanel() {
         setLayout(new BorderLayout());
@@ -39,9 +47,22 @@ public class TagSelectionPanel extends JPanel {
 
         add(scrollPane, BorderLayout.CENTER);
 
-        add(cbxAnyMatch, BorderLayout.SOUTH);
+        txtMinduration.setToolTipText("Minimale Dauer in Sekunden");
+
+        add(H.makeHorizontalPanel(cbxAnyMatch, new JPopupMenu.Separator(), new JLabel("Mindestdauer"), txtMinduration, btnApplyMinDuration), BorderLayout.SOUTH);
         // Initialer Load
         reloadTags();
+
+        btnApplyMinDuration.addActionListener(a->{
+            try {
+                AppState.get().setMinimunDuration(Integer.valueOf(txtMinduration.getText()));
+            }catch (Exception ex){
+                //egal
+            }
+            fireTagSelectionChanged();
+        });
+
+
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e->{
             handler.load();

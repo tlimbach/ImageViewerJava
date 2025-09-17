@@ -64,24 +64,18 @@ public class ThumbnailPanel extends JPanel {
         EventBus.get().register(RangeChangedEvent.class, e -> {
             invalidateThumbnails(e.file());
 
-            AnimatedThumbnail match = animatedThumbnails.stream()
-                    .filter(a -> a.filename.equals(e.file().getName()))
-                    .findFirst()
-                    .orElse(null);
+            AnimatedThumbnail match = animatedThumbnails.stream().filter(a -> a.filename.equals(e.file().getName())).findFirst().orElse(null);
 
             if (match != null) {
-                CompletableFuture
-                        .supplyAsync(() -> loadThumbnails(e.file(), ANIMATION_FRAMES_PER_THUMBNAIL),
-                                Controller.getInstance().getExecutorService())
-                        .thenAccept(thumbFiles -> {
-                            if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                                SwingUtilities.invokeLater(() -> {
-                                    match.stop();                    // alte Animation stoppen
-                                    match.imageFiles = thumbFiles;   // neue Frames setzen
-                                    match.start();                   // Animation wieder starten
-                                });
-                            }
+                CompletableFuture.supplyAsync(() -> loadThumbnails(e.file(), ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
+                    if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                        SwingUtilities.invokeLater(() -> {
+                            match.stop();                    // alte Animation stoppen
+                            match.imageFiles = thumbFiles;   // neue Frames setzen
+                            match.start();                   // Animation wieder starten
                         });
+                    }
+                });
             }
         });
 
@@ -194,8 +188,7 @@ public class ThumbnailPanel extends JPanel {
                         myLabel = selectedLabel;
 
                         Rectangle r = selectedLabel.getBounds();
-                        Rectangle viewRect = SwingUtilities.convertRectangle(
-                                selectedLabel.getParent(), r, scrollPane.getViewport());
+                        Rectangle viewRect = SwingUtilities.convertRectangle(selectedLabel.getParent(), r, scrollPane.getViewport());
                         scrollPane.getViewport().scrollRectToVisible(viewRect);
                     });
 
@@ -219,20 +212,14 @@ public class ThumbnailPanel extends JPanel {
                     JMenuItem deleteItem = new JMenuItem("Bild löschen");
 
                     deleteItem.addActionListener(ev -> {
-                        int result = JOptionPane.showConfirmDialog(label,
-                                "Bild wirklich löschen?\n" + file.getName(),
-                                "Löschen bestätigen",
-                                JOptionPane.YES_NO_OPTION);
+                        int result = JOptionPane.showConfirmDialog(label, "Bild wirklich löschen?\n" + file.getName(), "Löschen bestätigen", JOptionPane.YES_NO_OPTION);
 
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
                                 EventBus.get().publish(new TagsChangedEvent());
                                 Controller.getInstance().getExecutorService().submit(() -> reloadDirectory());
                             } else {
-                                JOptionPane.showMessageDialog(label,
-                                        "Datei konnte nicht gelöscht werden.",
-                                        "Fehler",
-                                        JOptionPane.ERROR_MESSAGE);
+                                JOptionPane.showMessageDialog(label, "Datei konnte nicht gelöscht werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
                             }
                         }
                     });
@@ -370,29 +357,55 @@ public class ThumbnailPanel extends JPanel {
 //            }
 //        });
 
+        H.out("total mediafiles " + mediaFiles.size());
 
         for (File file : mediaFiles) {
-            MEDIA_TYPE type = Controller.isImageFile(file) ? MEDIA_TYPE.IMAGE :
-                    Controller.isVideoFile(file) ? MEDIA_TYPE.VIDEO : null;
+            MEDIA_TYPE type = Controller.isImageFile(file) ? MEDIA_TYPE.IMAGE : Controller.isVideoFile(file) ? MEDIA_TYPE.VIDEO : null;
             if (type == null) continue;
 
-            CompletableFuture
-                    .supplyAsync(() -> type == MEDIA_TYPE.IMAGE
-                                    ? loadImageThumbnail(file)
-                                    : loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL),
-                            Controller.getInstance().getExecutorService())
-                    .thenAccept(thumbFiles -> {
-                        if (generation != currentGenerationId) return;
-                        if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                            SwingUtilities.invokeLater(() -> {
-                                if (generation != currentGenerationId) return;
-                                addThumbnailLabelTo(newGridPanel, type, thumbFiles, file);
-                                thumbnailsLoadedCount++;
-                                EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
-                                updateVisibleThumbnails();
-                            });
+            try {
+                if (type == MEDIA_TYPE.IMAGE) {
+
+                    H.out(file.getName() + " " + RangeHandler.getInstance().getTotalLength(file));
+                    if (RangeHandler.getInstance().getTotalLength(file) > 0) {
+                        continue;
+                    }
+                } else {
+                    try {
+                        int minDuration = AppState.get().getMinimunDuration();
+                        int actualDuration = RangeHandler.getInstance().getTotalLength(file);
+
+                        H.out("duration " + file.getName() + " " + actualDuration);
+
+                        if (actualDuration > 0 && actualDuration < minDuration) {
+                            H.out("Skippign (too short) " + file.getName());
+                            continue;
                         }
+
+
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            } catch (Exception es) {
+                es.printStackTrace();
+            }
+
+            H.out("adding to thumbnailview: " + file.getName());
+
+
+            CompletableFuture.supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
+                if (generation != currentGenerationId) return;
+                if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                    SwingUtilities.invokeLater(() -> {
+                        if (generation != currentGenerationId) return;
+                        addThumbnailLabelTo(newGridPanel, type, thumbFiles, file);
+                        thumbnailsLoadedCount++;
+                        EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
+                        updateVisibleThumbnails();
                     });
+                }
+            });
         }
 
     }
@@ -408,7 +421,6 @@ public class ThumbnailPanel extends JPanel {
         label.addMouseListener(mouseListener);
 
 //        in slideshow angezeigtes bild soll in thumbailview angezeigt werden
-
 
 
         label.addMouseListener(new MouseAdapter() {
@@ -429,7 +441,7 @@ public class ThumbnailPanel extends JPanel {
                         try {
                             BufferedImage image;
                             if (file.getName().toLowerCase().endsWith(".mpo")) {
-                                  MpoReader.preloadFrames(file);
+                                MpoReader.preloadFrames(file);
 //                                List<BufferedImage> images = new JPGExtractor().createBufferdImageFromMpo(file);
 //                                double p = ParallaxHandler.getInstance().getParallaxForFile(file);
 //                                image = AnaglyphUtils.createSimpleAnaglyphVarianteC(images.get(0), images.get(1), p, 0.8f, 1.0f);
@@ -601,15 +613,7 @@ public class ThumbnailPanel extends JPanel {
             int ms = milli % 1000;
             String timestamp = String.format("%02d:%02d:%02d.%03d", hours, minutes, seconds, ms);
 
-            String[] cmd = {
-                    "ffmpeg", "-y",
-                    "-loglevel", "error",
-                    "-ss", timestamp,
-                    "-i", videoFile.getAbsolutePath(),
-                    "-vframes", "1",
-                    "-vf", "scale='min(" + PREVIEW_IMAGE_WIDTH + "\\,iw)':min(" + PREVIEW_IMAGE_HEIGHT + "\\,ih):force_original_aspect_ratio=decrease,pad=" + PREVIEW_IMAGE_WIDTH + ":" + PREVIEW_IMAGE_HEIGHT + ":(ow-iw)/2:(oh-ih)/2",
-                    file.getAbsolutePath()
-            };
+            String[] cmd = {"ffmpeg", "-y", "-loglevel", "error", "-ss", timestamp, "-i", videoFile.getAbsolutePath(), "-vframes", "1", "-vf", "scale='min(" + PREVIEW_IMAGE_WIDTH + "\\,iw)':min(" + PREVIEW_IMAGE_HEIGHT + "\\,ih):force_original_aspect_ratio=decrease,pad=" + PREVIEW_IMAGE_WIDTH + ":" + PREVIEW_IMAGE_HEIGHT + ":(ow-iw)/2:(oh-ih)/2", file.getAbsolutePath()};
 
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectOutput(ProcessBuilder.Redirect.DISCARD);

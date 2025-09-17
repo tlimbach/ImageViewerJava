@@ -11,6 +11,7 @@ import java.nio.file.Path;
 @Data
 public class AppState {
    private static AppState appState = new AppState();
+   private int minimunDuration=0;
 
    public static AppState get() {
        return appState;
@@ -48,4 +49,5 @@ public class AppState {
       File actualFile = currentDir.resolve(file.getName()).toFile();
       return actualFile;
    }
+
 }
