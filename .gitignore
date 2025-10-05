@@ -22,3 +22,19 @@
 # virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
 hs_err_pid*
 replay_pid*
+.DS_Store
+settings.json
+.idea/.gitignore
+.idea/misc.xml
+.idea/uiDesigner.xml
+.idea/workspace.xml
+src/.DS_Store
+src/main/.DS_Store
+src/main/java/.DS_Store
+target/.DS_Store
+.DS_Store
+.gitignore
+.idea/.gitignore
+.idea/misc.xml
+.idea/uiDesigner.xml
+src/.DS_Store

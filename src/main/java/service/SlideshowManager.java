@@ -90,6 +90,8 @@ public class SlideshowManager {
         running = false;
         if (slideshowTimer != null) slideshowTimer.stop();
         repeatCheckTimer.stop();
+        mediaView.stop();
+        mediaView.getLeftBar().stop();
     }
 
     public boolean isRunning() {
