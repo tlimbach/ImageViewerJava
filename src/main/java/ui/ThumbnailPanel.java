@@ -14,8 +14,8 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
 
 public class ThumbnailPanel extends JPanel {
@@ -38,12 +38,18 @@ public class ThumbnailPanel extends JPanel {
     private volatile File currentHoverFile;
 
     private JLabel myLabel;
+    private static final int INITIAL_VIDEO_THUMBNAIL_FRAMES = 1;
+    private static final int PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL = 3;
+    private static final int PROGRESS_UPDATE_STEP = 25;
+    private JPanel pendingRefreshPanel;
+    private final Timer thumbnailUiRefreshTimer = new Timer(80, e -> flushThumbnailUiRefresh());
 
 
     public ThumbnailPanel() {
 
 
         mouseListener = createMouseListener();
+        thumbnailUiRefreshTimer.setRepeats(false);
 
         setLayout(new BorderLayout());
         scrollPane = new JScrollPane();
@@ -64,138 +70,157 @@ public class ThumbnailPanel extends JPanel {
         EventBus.get().register(RangeChangedEvent.class, e -> {
             invalidateThumbnails(e.file());
 
-            AnimatedThumbnail match = animatedThumbnails.stream().filter(a -> a.filename.equals(e.file().getName())).findFirst().orElse(null);
-
-            if (match != null) {
-                CompletableFuture.supplyAsync(() -> loadThumbnails(e.file(), ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
-                    if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                        SwingUtilities.invokeLater(() -> {
-                            match.stop();                    // alte Animation stoppen
-                            match.imageFiles = thumbFiles;   // neue Frames setzen
-                            match.start();                   // Animation wieder starten
-                        });
-                    }
-                });
-            }
-        });
-
-        EventBus.get().register(RotationChangedEvent.class, e -> {
             SwingUtilities.invokeLater(() -> {
-                for (AnimatedThumbnail thumb : animatedThumbnails) {
-                    if (thumb.filename.equals(e.file().getName())) {
-                        try {
-                            BufferedImage original = ImageIO.read(e.file());
-                            BufferedImage rotated = H.rotate(original, e.degrees());
-                            Image scaled = getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
-                            thumb.label.setIcon(new ImageIcon(scaled));
-                        } catch (IOException ex) {
-                            ex.printStackTrace();
+                AnimatedThumbnail match = animatedThumbnails.stream().filter(a -> a.filename.equals(e.file().getName())).findFirst().orElse(null);
+
+                if (match != null) {
+                    CompletableFuture.supplyAsync(() -> loadThumbnails(e.file(), ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
+                        if (thumbFiles != null && !thumbFiles.isEmpty()) {
+                            SwingUtilities.invokeLater(() -> {
+                                if (!animatedThumbnails.contains(match)) return;
+
+                                boolean wasRunning = match.isRunning;
+                                if (wasRunning) {
+                                    match.stop();
+                                }
+
+                                match.imageFiles = thumbFiles;
+
+                                if (wasRunning) {
+                                    match.start();
+                                    match.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
+                                }
+                            });
                         }
-                        break;
-                    }
+                    });
                 }
             });
         });
 
-        EventBus.get().register(UserKeyboardEvent.class, e -> {
-
-            String direction = e.direction();
-
-            if (myLabel == null) return;  // Falls noch nie eins geklickt
-
-            // Aktuellen Index suchen
-            int index = -1;
-            for (int i = 0; i < animatedThumbnails.size(); i++) {
-                if (animatedThumbnails.get(i).label == myLabel) {
-                    index = i;
-                    break;
+        EventBus.get().register(RotationChangedEvent.class, e -> {
+            CompletableFuture.supplyAsync(() -> {
+                try {
+                    BufferedImage original = ImageIO.read(e.file());
+                    if (original == null) return null;
+                    BufferedImage rotated = H.rotate(original, e.degrees());
+                    return getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                    return null;
                 }
+            }, Controller.getInstance().getExecutorService()).thenAccept(scaled -> {
+                if (scaled == null) return;
+                SwingUtilities.invokeLater(() -> {
+                    for (AnimatedThumbnail thumb : animatedThumbnails) {
+                        if (thumb.filename.equals(e.file().getName())) {
+                            thumb.label.setIcon(new ImageIcon(scaled));
+                            break;
+                        }
+                    }
+                });
+            });
+        });
+
+        EventBus.get().register(UserKeyboardEvent.class, e -> {
+            SwingUtilities.invokeLater(() -> handleKeyboardCommand(e.command()));
+        });
+
+        EventBus.get().register(MediaviewPlayEvent.class, e -> {
+            SwingUtilities.invokeLater(this::selectCurrentFileThumbnail);
+        });
+    }
+
+    private void handleKeyboardCommand(UserCommand command) {
+        if (myLabel == null) return;  // Falls noch nie eins geklickt
+
+        // Aktuellen Index suchen
+        int index = -1;
+        for (int i = 0; i < animatedThumbnails.size(); i++) {
+            if (animatedThumbnails.get(i).label == myLabel) {
+                index = i;
+                break;
+            }
+        }
+
+        int nextIndex = index; // Default: unverändert
+
+        switch (command) {
+            case RIGHT:
+                if (index != -1 && index + 1 < animatedThumbnails.size()) {
+                    nextIndex = index + 1;
+                }
+                break;
+            case LEFT:
+                if (index > 0) {
+                    nextIndex = index - 1;
+                }
+                break;
+            case UP:
+                if (index - 3 >= 0) {
+                    nextIndex = index - 3;
+                }
+                break;
+            case DOWN:
+                if (index + 3 < animatedThumbnails.size()) {
+                    nextIndex = index + 3;
+                }
+                break;
+        }
+
+
+        if (nextIndex != index) {
+            JLabel next = animatedThumbnails.get(nextIndex).label;
+
+            if (selectedLabel != null) {
+                selectedLabel.setBorder(null);
             }
 
-            int nextIndex = index; // Default: unverändert
+            selectedLabel = next;
+            selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
 
-            switch (direction) {
-                case "RIGHT":
-                    if (index != -1 && index + 1 < animatedThumbnails.size()) {
-                        nextIndex = index + 1;
-                    }
-                    break;
-                case "LEFT":
-                    if (index > 0) {
-                        nextIndex = index - 1;
-                    }
-                    break;
-                case "UP":
-                    if (index - 3 >= 0) {
-                        nextIndex = index - 3;
-                    }
-                    break;
-                case "DOWN":
-                    if (index + 3 < animatedThumbnails.size()) {
-                        nextIndex = index + 3;
-                    }
-                    break;
-            }
+            File file = (File) next.getClientProperty("file");
+            AppState.get().setCurrentFile(file);
+            Controller.getInstance().handleMedia(file, false);
+
+            myLabel = selectedLabel;
+
+            Rectangle r = selectedLabel.getBounds();
+            Rectangle viewRect = SwingUtilities.convertRectangle(
+                    selectedLabel.getParent(), r, scrollPane.getViewport());
+            scrollPane.getViewport().scrollRectToVisible(viewRect);
 
 
-            if (nextIndex != index) {
-                JLabel next = animatedThumbnails.get(nextIndex).label;
+        }
+        Rectangle r = myLabel.getBounds();
+        Rectangle viewRect = SwingUtilities.convertRectangle(myLabel.getParent(), r, scrollPane.getViewport());
+        viewRect.y = Math.max(viewRect.y - 50, 0);
+        viewRect.height += 100;
+        scrollPane.scrollRectToVisible(viewRect);
+    }
+
+    private void selectCurrentFileThumbnail() {
+        File current = AppState.get().getCurrentFile();
+        if (current == null) return;
+
+        for (AnimatedThumbnail thumb : animatedThumbnails) {
+            File thumbFile = (File) thumb.label.getClientProperty("file");
+            if (thumbFile != null && thumbFile.equals(current)) {
 
                 if (selectedLabel != null) {
                     selectedLabel.setBorder(null);
                 }
 
-                selectedLabel = next;
+                selectedLabel = thumb.label;
                 selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
-
-                File file = (File) next.getClientProperty("file");
-                AppState.get().setCurrentFile(file);
-                Controller.getInstance().handleMedia(file, false);
-
                 myLabel = selectedLabel;
 
                 Rectangle r = selectedLabel.getBounds();
-                Rectangle viewRect = SwingUtilities.convertRectangle(
-                        selectedLabel.getParent(), r, scrollPane.getViewport());
+                Rectangle viewRect = SwingUtilities.convertRectangle(selectedLabel.getParent(), r, scrollPane.getViewport());
                 scrollPane.getViewport().scrollRectToVisible(viewRect);
 
-
+                break;
             }
-            Rectangle r = myLabel.getBounds();
-            Rectangle viewRect = SwingUtilities.convertRectangle(myLabel.getParent(), r, scrollPane.getViewport());
-            viewRect.y = Math.max(viewRect.y - 50, 0);
-            viewRect.height += 100;
-            scrollPane.scrollRectToVisible(viewRect);
-
-
-        });
-
-        EventBus.get().register(MediaviewPlayEvent.class, e -> {
-            File current = AppState.get().getCurrentFile();
-            if (current == null) return;
-
-            for (AnimatedThumbnail thumb : animatedThumbnails) {
-                File thumbFile = (File) thumb.label.getClientProperty("file");
-                if (thumbFile != null && thumbFile.equals(current)) {
-
-                    SwingUtilities.invokeLater(() -> {
-                        if (selectedLabel != null) {
-                            selectedLabel.setBorder(null);
-                        }
-
-                        selectedLabel = thumb.label;
-                        selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
-                        myLabel = selectedLabel;
-
-                        Rectangle r = selectedLabel.getBounds();
-                        Rectangle viewRect = SwingUtilities.convertRectangle(selectedLabel.getParent(), r, scrollPane.getViewport());
-                        scrollPane.getViewport().scrollRectToVisible(viewRect);
-                    });
-
-                    break;
-                }
-            }
-        });
+        }
     }
 
     private MouseAdapter createMouseListener() {
@@ -288,6 +313,11 @@ public class ThumbnailPanel extends JPanel {
     }
 
     void updateVisibleThumbnails() {
+        if (!SwingUtilities.isEventDispatchThread()) {
+            SwingUtilities.invokeLater(this::updateVisibleThumbnails);
+            return;
+        }
+
         Rectangle view = scrollPane.getViewport().getViewRect();
         for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
             boolean visible = view.intersects(thumb.label.getBounds());
@@ -304,10 +334,15 @@ public class ThumbnailPanel extends JPanel {
     int totalFramesLoaded = 0;
     int framesFromCache = 0;
 
-    private long currentGenerationId = 0;
+    private volatile long currentGenerationId = 0;
     int processed = 0;
 
     public void populate(List<File> _mediaFiles) {
+        if (_mediaFiles == null) {
+            runOnEdt(() -> scrollPane.setViewportView(new JPanel(new GridLayout(0, 3, 5, 5))));
+            return;
+        }
+
         List<File> mediaFiles = new ArrayList<>(_mediaFiles);
 
         long generation = ++currentGenerationId;
@@ -316,58 +351,35 @@ public class ThumbnailPanel extends JPanel {
         totalFramesLoaded = 0;
         framesFromCache = 0;
 
-        long now = System.currentTimeMillis();
-        animatedThumbnails.forEach(AnimatedThumbnail::stop);
-        animatedThumbnails.clear();
-        System.out.println("took " + (System.currentTimeMillis() - now));
-
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
+        JLabel loadingLabel = new JLabel("Lade Medien ...", SwingConstants.CENTER);
+        loadingLabel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
-//        newGridPanel.addKeyListener(new KeyAdapter() {
-//            @Override
-//            public void keyPressed(KeyEvent e) {
-//                super.keyPressed(e);
-//                H.out("new pressed :" + e.getKeyCode());
-//            }
-//
-//            @Override
-//            public void keyReleased(KeyEvent e) {
-//                super.keyReleased(e);
-//            }
-//
-//            @Override
-//            public void keyTyped(KeyEvent e) {
-//                super.keyTyped(e);
-//            }
-//        });
+        runOnEdtAndWait(() -> {
+            long now = System.currentTimeMillis();
+            animatedThumbnails.forEach(AnimatedThumbnail::stop);
+            animatedThumbnails.clear();
+            selectedLabel = null;
+            myLabel = null;
+            scrollPane.setViewportView(loadingLabel);
+            System.out.println("thumbnail ui reset took " + (System.currentTimeMillis() - now));
+        });
 
-
-        // Viewport-Listener an neuen Panel binden
-        scrollPane.setViewportView(newGridPanel);
-//        scrollPane.addKeyListener(new KeyAdapter() {
-//            @Override
-//            public void keyPressed(KeyEvent e) {
-//                super.keyPressed(e);
-//            }
-//
-//            @Override
-//            public void keyTyped(KeyEvent e) {
-//                super.keyTyped(e);
-//            }
-//        });
-
-        H.out("total mediafiles " + mediaFiles.size());
+        EventBus.get().publish(new ThumbnailsLoadedEvent(0, mediaFiles.size()));
+        AtomicInteger processedFiles = new AtomicInteger();
 
         for (File file : mediaFiles) {
             MEDIA_TYPE type = Controller.isImageFile(file) ? MEDIA_TYPE.IMAGE : Controller.isVideoFile(file) ? MEDIA_TYPE.VIDEO : null;
-            if (type == null) continue;
+            if (type == null) {
+                publishProgress(processedFiles.incrementAndGet(), mediaFiles.size());
+                continue;
+            }
 
             try {
                 if (type == MEDIA_TYPE.IMAGE) {
-
-                    H.out(file.getName() + " " + RangeHandler.getInstance().getTotalLength(file));
                     if (RangeHandler.getInstance().getTotalLength(file) > 0) {
+                        publishProgress(processedFiles.incrementAndGet(), mediaFiles.size());
                         continue;
                     }
                 } else {
@@ -375,10 +387,8 @@ public class ThumbnailPanel extends JPanel {
                         int minDuration = AppState.get().getMinimunDuration();
                         int actualDuration = RangeHandler.getInstance().getTotalLength(file);
 
-                        H.out("duration " + file.getName() + " " + actualDuration);
-
                         if (actualDuration > 0 && actualDuration < minDuration) {
-                            H.out("Skippign (too short) " + file.getName());
+                            publishProgress(processedFiles.incrementAndGet(), mediaFiles.size());
                             continue;
                         }
 
@@ -391,23 +401,50 @@ public class ThumbnailPanel extends JPanel {
                 es.printStackTrace();
             }
 
-            H.out("adding to thumbnailview: " + file.getName());
-
-
-            CompletableFuture.supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
+            int initialFrameCount = type == MEDIA_TYPE.IMAGE ? ANIMATION_FRAMES_PER_THUMBNAIL : INITIAL_VIDEO_THUMBNAIL_FRAMES;
+            CompletableFuture.supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, initialFrameCount), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
                 if (generation != currentGenerationId) return;
+                int done = processedFiles.incrementAndGet();
+                publishProgress(done, mediaFiles.size());
                 if (thumbFiles != null && !thumbFiles.isEmpty()) {
                     SwingUtilities.invokeLater(() -> {
                         if (generation != currentGenerationId) return;
+                        if (scrollPane.getViewport().getView() == loadingLabel) {
+                            scrollPane.setViewportView(newGridPanel);
+                        }
                         addThumbnailLabelTo(newGridPanel, type, thumbFiles, file);
                         thumbnailsLoadedCount++;
-                        EventBus.get().publish(new ThumbnailsLoadedEvent(thumbnailsLoadedCount, mediaFiles.size()));
-                        updateVisibleThumbnails();
                     });
                 }
             });
         }
 
+    }
+
+    private void publishProgress(int loaded, int total) {
+        if (loaded == total || loaded % PROGRESS_UPDATE_STEP == 0) {
+            EventBus.get().publish(new ThumbnailsLoadedEvent(loaded, total));
+        }
+    }
+
+    private void runOnEdt(Runnable task) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            task.run();
+        } else {
+            SwingUtilities.invokeLater(task);
+        }
+    }
+
+    private void runOnEdtAndWait(Runnable task) {
+        if (SwingUtilities.isEventDispatchThread()) {
+            task.run();
+            return;
+        }
+        try {
+            SwingUtilities.invokeAndWait(task);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file) {
@@ -430,7 +467,7 @@ public class ThumbnailPanel extends JPanel {
                 if (type == MEDIA_TYPE.IMAGE) {
                     currentHoverFile = file;
 
-                    new Thread(() -> {
+                    Controller.getInstance().getExecutorService().submit(() -> {
                         // Kurze künstliche Verzögerung, optional:
                         H.sleep(50);
 
@@ -456,8 +493,7 @@ public class ThumbnailPanel extends JPanel {
                             throw new RuntimeException(ex);
                         }
 
-
-                    }).start();
+                    });
                 }
             }
         });
@@ -465,36 +501,41 @@ public class ThumbnailPanel extends JPanel {
         boolean imagedOK = true;
 
         if (type == MEDIA_TYPE.IMAGE) {
-            CompletableFuture.runAsync(() -> {
-                try {
-                    BufferedImage original;
+            int rotation = RotationHandler.getInstance().getRotation(file);
+            if (rotation == 0 && !thumbnailFiles.isEmpty()) {
+                label.setIcon(new ImageIcon(thumbnailFiles.get(0).getAbsolutePath()));
+            } else {
+                CompletableFuture.runAsync(() -> {
+                    try {
 
-                    File resolved = AppState.get().getFileForCurrentDirectory(file);
+                        BufferedImage original;
 
-                    if (file.getName().toLowerCase().endsWith(".mpo")) {
-                        // Nur linkes Frame laden, perfekt für Thumbnails
-                        original = MpoReader.getLeftFrame(resolved);
-                    } else {
-                        // Normales Bild laden
-                        original = ImageIO.read(resolved);
+                        File resolved = AppState.get().getFileForCurrentDirectory(file);
+
+                        if (file.getName().toLowerCase().endsWith(".mpo")) {
+                            // Nur linkes Frame laden, perfekt für Thumbnails
+                            original = MpoReader.getLeftFrame(resolved);
+                        } else {
+                            // Normales Bild laden
+                            original = ImageIO.read(resolved);
+                        }
+
+                        if (original == null) {
+                            H.out("Problems remain " + file.getAbsoluteFile().toPath());
+                            return;
+                        }
+
+                        BufferedImage rotated = H.rotate(original, rotation);
+                        Image scaled = getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
+
+                        // UI-Update gehört auf den Swing-Thread!
+                        SwingUtilities.invokeLater(() -> label.setIcon(new ImageIcon(scaled)));
+
+                    } catch (IOException e) {
+                        e.printStackTrace();
                     }
-
-                    if (original == null) {
-                        H.out("Problems remain " + file.getAbsoluteFile().toPath());
-                        return;
-                    }
-
-                    int rotation = RotationHandler.getInstance().getRotation(file);
-                    BufferedImage rotated = H.rotate(original, rotation);
-                    Image scaled = getScaledImagePreserveRatio(rotated, THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT);
-
-                    // UI-Update gehört auf den Swing-Thread!
-                    SwingUtilities.invokeLater(() -> label.setIcon(new ImageIcon(scaled)));
-
-                } catch (IOException e) {
-                    e.printStackTrace();
-                }
-            }, Controller.getInstance().getExecutorService());
+                }, Controller.getInstance().getExecutorService());
+            }
         } else {
             Image image = Toolkit.getDefaultToolkit().getImage(thumbnailFiles.get(0).getAbsolutePath());
             label.setIcon(new ImageIcon(image));
@@ -511,12 +552,57 @@ public class ThumbnailPanel extends JPanel {
             aNail.type = type;
             aNail.filename = file.getName();
             animatedThumbnails.add(aNail);
+            requestThumbnailUiRefresh(panel);
 
             if (animatedThumbnails.size() < 20) {
                 aNail.start();
+                aNail.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
             }
-            aNail.preload();
+
+            if (type == MEDIA_TYPE.VIDEO) {
+                loadRemainingVideoFramesAsync(aNail, file);
+            }
         }
+    }
+
+    private void requestThumbnailUiRefresh(JPanel panel) {
+        pendingRefreshPanel = panel;
+        if (!thumbnailUiRefreshTimer.isRunning()) {
+            thumbnailUiRefreshTimer.start();
+        }
+    }
+
+    private void flushThumbnailUiRefresh() {
+        JPanel panel = pendingRefreshPanel;
+        if (panel == null) return;
+
+        panel.revalidate();
+        panel.repaint();
+        updateVisibleThumbnails();
+    }
+
+    private void loadRemainingVideoFramesAsync(AnimatedThumbnail thumbnail, File file) {
+        CompletableFuture
+                .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService())
+                .thenAccept(thumbFiles -> {
+                    if (thumbFiles == null || thumbFiles.isEmpty()) return;
+
+                    SwingUtilities.invokeLater(() -> {
+                        if (!animatedThumbnails.contains(thumbnail)) return;
+
+                        boolean wasRunning = thumbnail.isRunning;
+                        if (wasRunning) {
+                            thumbnail.stop();
+                        }
+
+                        thumbnail.imageFiles = thumbFiles;
+
+                        if (wasRunning) {
+                            thumbnail.start();
+                            thumbnail.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
+                        }
+                    });
+                });
     }
 
     public void invalidateThumbnails(File videoFile) {
@@ -536,16 +622,19 @@ public class ThumbnailPanel extends JPanel {
 
         double widthRatio = (double) maxWidth / srcWidth;
         double heightRatio = (double) maxHeight / srcHeight;
-        double scale = Math.min(widthRatio, heightRatio);
+        double scale = Math.max(widthRatio, heightRatio);
 
-        int newWidth = (int) (srcWidth * scale);
-        int newHeight = (int) (srcHeight * scale);
+        int newWidth = (int) Math.round(srcWidth * scale);
+        int newHeight = (int) Math.round(srcHeight * scale);
+        int x = (maxWidth - newWidth) / 2;
+        int overflowY = Math.max(0, newHeight - maxHeight);
+        int y = -(overflowY / 3);
 
         BufferedImage result = new BufferedImage(maxWidth, maxHeight, BufferedImage.TYPE_INT_ARGB);
         Graphics2D g = result.createGraphics();
         g.setColor(Color.DARK_GRAY);
         g.fillRect(0, 0, maxWidth, maxHeight);
-        g.drawImage(srcImg, (maxWidth - newWidth) / 2, (maxHeight - newHeight) / 2, newWidth, newHeight, null);
+        g.drawImage(srcImg, x, y, newWidth, newHeight, null);
         g.dispose();
 
         return result;

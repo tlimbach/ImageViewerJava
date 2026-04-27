@@ -6,6 +6,8 @@ import service.*;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.Arrays;
@@ -25,6 +27,7 @@ public class ControlPanel extends JPanel {
 
     private final JSlider sldMoviePosition = new JSlider();
     private JTextField txtDuration;
+    private JTextField txtSlideshowTotalMinutes;
     private JToggleButton btnPlayPause;
     private boolean isUpdatingFromCode = false;
     private final SlideshowManager slideshowManager = new SlideshowManager();
@@ -41,6 +44,7 @@ public class ControlPanel extends JPanel {
     private RangeHandler rangeHandler = RangeHandler.getInstance();
     private TagSelectionPanel tagSelectionPanel;
     private TagEditDialog tagEditDialog;
+    private Rectangle tagEditDialogBounds;
     private long lastSliderEventTime;
 
     private boolean isUserDraggingSlider = false;
@@ -85,25 +89,23 @@ public class ControlPanel extends JPanel {
         });
 
         EventBus.get().register(UserKeyboardEvent.class, e -> {
-            String direction = e.direction();
-
             // Hier: PAGE_UP und PAGE_DOWN (und weitere) verarbeiten
-            if ("PAGE_UP".equals(direction)) {
+            if (e.command() == UserCommand.PAGE_UP) {
                 int value = sldParalaxe.getValue();
                 sldParalaxe.setValue(Math.min(value + 1, sldParalaxe.getMaximum()));
-            } else if ("PAGE_DOWN".equals(direction)) {
+            } else if (e.command() == UserCommand.PAGE_DOWN) {
                 int value = sldParalaxe.getValue();
                 sldParalaxe.setValue(Math.max(value - 1, sldParalaxe.getMinimum()));
-            } else if ("HOME".equals(direction)) {
+            } else if (e.command() == UserCommand.HOME) {
                 int value = sldParalaxe.getValue();
                 sldParalaxe.setValue(Math.min(value + 5, sldParalaxe.getMaximum()));
-            } else if ("END".equals(direction)) {
+            } else if (e.command() == UserCommand.END) {
                 int value = sldParalaxe.getValue();
                 sldParalaxe.setValue(Math.max(value - 5, sldParalaxe.getMinimum()));
-            } else if ("EINFG".equals(direction)) {
+            } else if (e.command() == UserCommand.INSERT) {
                 int value = sldParalaxe.getValue();
                 sldParalaxe.setValue(Math.min(value + 20, sldParalaxe.getMaximum()));
-            } else if ("ENTF".equals(direction)) {
+            } else if (e.command() == UserCommand.DELETE) {
                 int value = sldParalaxe.getValue();
                 sldParalaxe.setValue(Math.max(value - 20, sldParalaxe.getMinimum()));
             }
@@ -120,14 +122,7 @@ public class ControlPanel extends JPanel {
         JLabel lblInfo = new JLabel("Noch nichts gewählt");
 
         btnFileChooser.addActionListener(a -> {
-
-
-            EventBus.get().publish(new MediaViewStopEvent());
-            new Timer(10, e -> EventBus.get().publish(new MediaViewStopEvent())) {{
-                setRepeats(false);
-                start();
-            }};
-
+            MediaView.getInstance().stopAndHide();
 
             JFileChooser chooser = new JFileChooser();
             chooser.setPreferredSize(new Dimension(800, 600));
@@ -140,8 +135,8 @@ public class ControlPanel extends JPanel {
                     File selected = (File) evt.getNewValue();
                     if (selected != null && selected.isDirectory()) {
                         File[] files = selected.listFiles();
-                        int imageCount = (int) Arrays.stream(files).filter(Controller::isImageFile).count();
-                        int videoCount = (int) Arrays.stream(files).filter(Controller::isVideoFile).count();
+                        int imageCount = files == null ? 0 : (int) Arrays.stream(files).filter(Controller::isImageFile).count();
+                        int videoCount = files == null ? 0 : (int) Arrays.stream(files).filter(Controller::isVideoFile).count();
                         lblInfo.setText("<html><br>Bilder: " + imageCount + "<br>Videos: " + videoCount + "</html>");
                     } else {
                         lblInfo.setText("Ungültige Auswahl");
@@ -150,32 +145,17 @@ public class ControlPanel extends JPanel {
             });
 
             if (AppState.get().getCurrentDirectory() != null) {
-                chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().getParent().toFile());
+                chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().toFile());
             }
 
+            int result = chooser.showOpenDialog(this);
+            if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
+                return;
+            }
 
-            JDialog dialog = new JDialog((Frame) null, "Verzeichnis wählen", true);
-            dialog.getContentPane().add(chooser);
-            dialog.setSize(800, 600);
-            dialog.setLocationRelativeTo(null);
-
-            // OK und Abbrechen Buttons selbst machen
-            chooser.addActionListener(e -> {
-                if (JFileChooser.APPROVE_SELECTION.equals(e.getActionCommand())) {
-                    Path directory = chooser.getSelectedFile().toPath();
-                    AppState.get().setCurrentDirectory(directory);
-                    Controller.getInstance().getExecutorService().submit(() ->
-                            EventBus.get().publish(new CurrentDirectoryChangedEvent())
-                    );
-                    dialog.dispose();
-                } else if (JFileChooser.CANCEL_SELECTION.equals(e.getActionCommand())) {
-                    dialog.dispose();
-                }
-            });
-
-            dialog.setVisible(true);
-            dialog.setModal(false);
-            dialog.toFront();
+            Path directory = chooser.getSelectedFile().toPath();
+            AppState.get().setCurrentDirectory(directory);
+            EventBus.get().publish(new CurrentDirectoryChangedEvent());
         });
 
         add(H.makeHorizontalPanel(btnFileChooser));
@@ -184,6 +164,8 @@ public class ControlPanel extends JPanel {
     private void addSlideshowControls() {
         txtDuration = new JTextField(3);
         txtDuration.setToolTipText("Anzeigedauer pro Bild (Sekunden)");
+        txtSlideshowTotalMinutes = new JTextField(3);
+        txtSlideshowTotalMinutes.setToolTipText("Gesamtdauer der Diashow (Minuten)");
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
         JCheckBox cbxMoveImage = new JCheckBox("Move..");
@@ -191,15 +173,20 @@ public class ControlPanel extends JPanel {
         btnStart.addActionListener(e -> {
             try {
                 int duration = Integer.parseInt(txtDuration.getText());
-                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration, cbxMoveImage.isSelected());
+                int totalMinutes = Integer.parseInt(txtSlideshowTotalMinutes.getText());
+                if (duration <= 0 || totalMinutes <= 0) {
+                    throw new NumberFormatException();
+                }
+                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration, totalMinutes, cbxMoveImage.isSelected());
             } catch (NumberFormatException ex) {
-                JOptionPane.showMessageDialog(this, "Bitte eine gültige Zahl für die Bilddauer eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
+                JOptionPane.showMessageDialog(this, "Bitte gültige Zahlen für Bilddauer und Gesamtdauer eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
             }
         });
 
         btnStop.addActionListener(e -> slideshowManager.stop());
 
-        add(H.makeHorizontalPanel(btnStart, btnStop, new JLabel("Dauer"), txtDuration, cbxMoveImage));
+        add(H.makeHorizontalPanel(btnStart, btnStop, cbxMoveImage));
+        add(H.makeHorizontalPanel(new JLabel("Dauer"), txtDuration, new JLabel("Gesamt"), txtSlideshowTotalMinutes));
     }
 
     private void addPlaybackControls() {
@@ -336,23 +323,7 @@ public class ControlPanel extends JPanel {
                 Window parent = SwingUtilities.getWindowAncestor(Controller.getInstance().getThumbnailPanel());
 
                 if (tagEditDialog == null) {
-                    tagEditDialog = new TagEditDialog(parent);
-
-                    GraphicsDevice[] screens = GraphicsEnvironment
-                            .getLocalGraphicsEnvironment()
-                            .getScreenDevices();
-
-                    GraphicsDevice rightScreen = screens[screens.length - 1];
-                    Rectangle bounds = rightScreen.getDefaultConfiguration().getBounds();
-
-
-                    int dialogWidth = 280;
-                    int dialogHeight = 400;
-                    tagEditDialog.setSize(dialogWidth, dialogHeight);
-                    tagEditDialog.setLocation(
-                            bounds.x + 20,
-                            bounds.y + bounds.height - dialogHeight - 50
-                    );
+                    tagEditDialog = createTagEditDialog(parent);
                 }
 
                 tagEditDialog.setFile(AppState.get().getCurrentFile(), true);
@@ -367,6 +338,43 @@ public class ControlPanel extends JPanel {
         add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
         tagSelectionPanel = new TagSelectionPanel();
         add(tagSelectionPanel);
+    }
+
+    private TagEditDialog createTagEditDialog(Window parent) {
+        TagEditDialog dialog = new TagEditDialog(parent);
+
+        if (tagEditDialogBounds != null) {
+            dialog.setBounds(tagEditDialogBounds);
+        } else {
+            GraphicsDevice[] screens = GraphicsEnvironment
+                    .getLocalGraphicsEnvironment()
+                    .getScreenDevices();
+
+            GraphicsDevice rightScreen = screens[screens.length - 1];
+            Rectangle bounds = rightScreen.getDefaultConfiguration().getBounds();
+
+            int dialogWidth = 280;
+            int dialogHeight = 400;
+            dialog.setSize(dialogWidth, dialogHeight);
+            dialog.setLocation(
+                    bounds.x + 20,
+                    bounds.y + bounds.height - dialogHeight - 50
+            );
+        }
+
+        dialog.addComponentListener(new ComponentAdapter() {
+            @Override
+            public void componentMoved(ComponentEvent e) {
+                tagEditDialogBounds = dialog.getBounds();
+            }
+
+            @Override
+            public void componentResized(ComponentEvent e) {
+                tagEditDialogBounds = dialog.getBounds();
+            }
+        });
+
+        return dialog;
     }
 
     public void setCurrentPlayPosMillis(long millis, long total) {

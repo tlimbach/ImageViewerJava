@@ -15,6 +15,7 @@ import java.awt.*;
 import java.util.List;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -34,6 +35,10 @@ public class MediaView {
     private final CallbackMediaPlayerComponent mediaPlayerComponent;
 
     private final LeftBar leftBar = new LeftBar();
+    private final VideoProgressOverlay videoProgressOverlay = new VideoProgressOverlay();
+    private final SlideshowProgressOverlay slideshowProgressOverlay = new SlideshowProgressOverlay();
+    private final SlideshowCountdownOverlay slideshowCountdownOverlay = new SlideshowCountdownOverlay();
+    private boolean videoOverlayActive;
 
     public static MediaView getInstance() {
         return instance;
@@ -68,25 +73,25 @@ public class MediaView {
 
                 // ChatGPT: hier bitte anstelle 'b' entsprechenden Code für die Cursortasten sezten
                 if (e.getKeyCode() == KeyEvent.VK_LEFT) {
-                    EventBus.get().publish(new UserKeyboardEvent("LEFT"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.LEFT));
                 } else if (e.getKeyCode() == KeyEvent.VK_RIGHT) {
-                    EventBus.get().publish(new UserKeyboardEvent("RIGHT"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.RIGHT));
                 } else if (e.getKeyCode() == KeyEvent.VK_UP) {
-                    EventBus.get().publish(new UserKeyboardEvent("UP"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.UP));
                 } else if (e.getKeyCode() == KeyEvent.VK_DOWN) {
-                    EventBus.get().publish(new UserKeyboardEvent("DOWN"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.DOWN));
                 } else if (e.getKeyCode() == KeyEvent.VK_PAGE_UP) {
-                    EventBus.get().publish(new UserKeyboardEvent("PAGE_UP"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.PAGE_UP));
                 } else if (e.getKeyCode() == KeyEvent.VK_PAGE_DOWN) {
-                    EventBus.get().publish(new UserKeyboardEvent("PAGE_DOWN"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.PAGE_DOWN));
                 } else if (e.getKeyCode() == KeyEvent.VK_HOME) {
-                    EventBus.get().publish(new UserKeyboardEvent("HOME"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.HOME));
                 } else if (e.getKeyCode() == KeyEvent.VK_END) {
-                    EventBus.get().publish(new UserKeyboardEvent("END"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.END));
                 } else if (e.getKeyCode() == KeyEvent.VK_INSERT || e.getKeyCode() == KeyEvent.VK_HELP) {
-                    EventBus.get().publish(new UserKeyboardEvent("EINFG"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.INSERT));
                 } else if (e.getKeyCode() == KeyEvent.VK_DELETE) {
-                    EventBus.get().publish(new UserKeyboardEvent("ENTF"));
+                    EventBus.get().publish(new UserKeyboardEvent(UserCommand.DELETE));
                 }
             }
         });
@@ -100,6 +105,24 @@ public class MediaView {
         stackPanel.add(imageLabel, "image");
 
         mediaPlayerComponent = new CallbackMediaPlayerComponent();
+        mediaPlayerComponent.videoSurfaceComponent().addMouseListener(new java.awt.event.MouseAdapter() {
+            @Override
+            public void mouseEntered(java.awt.event.MouseEvent e) {
+                videoProgressOverlay.setMouseOverVideo(true);
+            }
+
+            @Override
+            public void mouseExited(java.awt.event.MouseEvent e) {
+                Point p = SwingUtilities.convertPoint(
+                        mediaPlayerComponent.videoSurfaceComponent(),
+                        e.getPoint(),
+                        videoProgressOverlay
+                );
+                if (!videoProgressOverlay.contains(p)) {
+                    videoProgressOverlay.setMouseOverVideo(false);
+                }
+            }
+        });
 
         stackPanel.add(mediaPlayerComponent.videoSurfaceComponent(), "video");
 
@@ -107,14 +130,20 @@ public class MediaView {
         JLayeredPane layeredPane = frame.getLayeredPane();
         leftBar.setBounds(0, 0, 10, frame.getHeight()); // Initialgröße
         layeredPane.add(leftBar, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(slideshowProgressOverlay, JLayeredPane.PALETTE_LAYER);
+        layeredPane.add(slideshowCountdownOverlay, JLayeredPane.POPUP_LAYER);
+        videoProgressOverlay.setSeekHandler(this::seekVideoTo);
+        layeredPane.add(videoProgressOverlay, JLayeredPane.MODAL_LAYER);
 
         initPlayerListener();
         startPositionUpdateTimer();
+        startOverlayHoverTimer();
+        installMouseWheelNavigation();
 
         frame.addComponentListener(new ComponentAdapter() {
             @Override
             public void componentResized(ComponentEvent e) {
-                leftBar.setBounds(0, 0, 10, frame.getHeight());
+                updateOverlayBounds();
             }
         });
 
@@ -187,6 +216,7 @@ public class MediaView {
             MediaPlayer player = mediaPlayerComponent.mediaPlayer();
             long millis = player.status().time();
             long total = player.status().length();
+            videoProgressOverlay.setProgress(millis, total);
 
             if (range != null && !AppState.get().isIgnoreTimerange()) {
                 long startMillis = (long) (range.start * 1000);
@@ -305,13 +335,6 @@ public class MediaView {
 
         int maxWidth = frame.getWidth();
         int maxHeight = frame.getHeight();
-        double scale = Math.min(
-                (double) maxWidth / rotatedImage.getWidth(),
-                (double) maxHeight / rotatedImage.getHeight()
-        );
-
-        int newWidth = (int) (rotatedImage.getWidth() * scale);
-        int newHeight = (int) (rotatedImage.getHeight() * scale);
 
         if (Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
             for (Component comp : stackPanel.getComponents()) {
@@ -320,11 +343,17 @@ public class MediaView {
                     break;
                 }
             }
+            double scale = Math.max(
+                    (double) maxWidth / rotatedImage.getWidth(),
+                    (double) maxHeight / rotatedImage.getHeight()
+            );
+            int newWidth = (int) Math.round(rotatedImage.getWidth() * scale);
+            int newHeight = (int) Math.round(rotatedImage.getHeight() * scale);
             AnimatedImagePanel animatedPanel = new AnimatedImagePanel(rotatedImage, newWidth, newHeight);
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
         } else {
-            BufferedImage highQuality = getHighQualityScaledImage(rotatedImage, newWidth, newHeight);
+            BufferedImage highQuality = getHighQualityCoverImage(rotatedImage, maxWidth, maxHeight);
             imageLabel.setIcon(new ImageIcon(highQuality));
             cardLayout.show(stackPanel, "image");
         }
@@ -334,10 +363,14 @@ public class MediaView {
         } else {
             leftBar.setVisible(false);
         }
+        videoProgressOverlay.setVisible(false);
+        setVideoOverlayActive(false);
     }
 
     private void showVideo(File file, boolean autostart) {
         cardLayout.show(stackPanel, "video");
+        setVideoOverlayActive(true);
+        updateOverlayBounds();
         if (autostart) {
             frame.setVisible(true);
             playVideoFile(file);
@@ -436,6 +469,7 @@ public class MediaView {
             frame.repaint();
             mediaPlayerComponent.videoSurfaceComponent().revalidate();
             mediaPlayerComponent.videoSurfaceComponent().repaint();
+            updateOverlayBounds();
 
             isFullscreen = fullscreen;
         });
@@ -450,17 +484,126 @@ public class MediaView {
         return leftBar;
     }
 
+    public void startSlideshowProgress(long durationMs) {
+        slideshowProgressOverlay.start(durationMs);
+        slideshowCountdownOverlay.start(durationMs);
+        updateOverlayBounds();
+    }
+
+    public void stopSlideshowProgress() {
+        slideshowProgressOverlay.stop();
+        slideshowCountdownOverlay.stop();
+    }
+
     public void hideFrame() {
+        setVideoOverlayActive(false);
         frame.setVisible(false);
     }
 
-    private BufferedImage getHighQualityScaledImage(BufferedImage src, int targetWidth, int targetHeight) {
+    public void stopAndHide() {
+        Runnable task = () -> {
+            mediaPlayerComponent.mediaPlayer().controls().stop();
+            setVideoOverlayActive(false);
+            frame.setVisible(false);
+            Controller.getInstance().getControlPanel().resetPlayPauseButton();
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            task.run();
+        } else {
+            SwingUtilities.invokeLater(task);
+        }
+    }
+
+    private void seekVideoTo(double progress) {
+        MediaPlayer player = mediaPlayerComponent.mediaPlayer();
+        player.controls().setPosition((float) progress);
+        long total = player.status().length();
+        if (total > 0) {
+            videoProgressOverlay.setProgress((long) (total * progress), total);
+        }
+        frame.requestFocusInWindow();
+    }
+
+    private void updateOverlayBounds() {
+        Rectangle stackBounds = SwingUtilities.convertRectangle(stackPanel.getParent(), stackPanel.getBounds(), frame.getLayeredPane());
+        leftBar.setBounds(stackBounds.x, stackBounds.y, 10, stackBounds.height);
+        slideshowProgressOverlay.setBounds(stackBounds.x + stackBounds.width - 10, stackBounds.y, 10, stackBounds.height);
+        slideshowCountdownOverlay.setBounds(stackBounds);
+        videoProgressOverlay.setBounds(stackBounds.x, stackBounds.y + stackBounds.height - 42, stackBounds.width, 42);
+        videoProgressOverlay.revalidate();
+        videoProgressOverlay.repaint();
+    }
+
+    private void setVideoOverlayActive(boolean active) {
+        videoOverlayActive = active;
+        videoProgressOverlay.setVideoActive(active);
+        if (!active) {
+            videoProgressOverlay.setMouseOverVideo(false);
+        }
+    }
+
+    private void startOverlayHoverTimer() {
+        Timer timer = new Timer(120, e -> updateOverlayHoverState());
+        timer.start();
+    }
+
+    private void updateOverlayHoverState() {
+        if (!videoOverlayActive || !frame.isVisible()) {
+            videoProgressOverlay.setMouseOverVideo(false);
+            return;
+        }
+
+        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
+        if (pointerInfo == null) {
+            videoProgressOverlay.setMouseOverVideo(false);
+            return;
+        }
+
+        Point point = pointerInfo.getLocation();
+        SwingUtilities.convertPointFromScreen(point, frame.getLayeredPane());
+        Rectangle stackBounds = SwingUtilities.convertRectangle(stackPanel.getParent(), stackPanel.getBounds(), frame.getLayeredPane());
+        videoProgressOverlay.setMouseOverVideo(stackBounds.contains(point));
+    }
+
+    private void installMouseWheelNavigation() {
+        Toolkit.getDefaultToolkit().addAWTEventListener(event -> {
+            if (!(event instanceof MouseWheelEvent wheelEvent)) return;
+            if (!frame.isVisible() || currentFile == null) return;
+
+            Point mouseLocation = MouseInfo.getPointerInfo().getLocation();
+            Rectangle frameBounds = frame.getBounds();
+            if (!frameBounds.contains(mouseLocation)) return;
+
+            int rotation = wheelEvent.getWheelRotation();
+            if (rotation > 0) {
+                EventBus.get().publish(new UserKeyboardEvent(UserCommand.RIGHT));
+                wheelEvent.consume();
+            } else if (rotation < 0) {
+                EventBus.get().publish(new UserKeyboardEvent(UserCommand.LEFT));
+                wheelEvent.consume();
+            }
+        }, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
+    }
+
+    private BufferedImage getHighQualityCoverImage(BufferedImage src, int targetWidth, int targetHeight) {
         BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2d = resized.createGraphics();
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        g2d.drawImage(src, 0, 0, targetWidth, targetHeight, null);
+
+        double scale = Math.max(
+                (double) targetWidth / src.getWidth(),
+                (double) targetHeight / src.getHeight()
+        );
+        int scaledWidth = (int) Math.round(src.getWidth() * scale);
+        int scaledHeight = (int) Math.round(src.getHeight() * scale);
+        int x = (targetWidth - scaledWidth) / 2;
+        int overflowY = Math.max(0, scaledHeight - targetHeight);
+        int y = -(overflowY / 3);
+
+        g2d.drawImage(src, x, y, scaledWidth, scaledHeight, null);
         g2d.dispose();
         return resized;
     }

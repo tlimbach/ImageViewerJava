@@ -3,12 +3,12 @@ package service;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class ThumbnailCache {
 
-    private static final Map<File, byte[]> map = new HashMap<>();
+    private static final Map<File, byte[]> map = new ConcurrentHashMap<>();
 
     public static byte[] getByteArray(File file) {
         byte[] bytes = map.get(file);

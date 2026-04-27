@@ -16,7 +16,7 @@ public class AnimatedImagePanel extends JPanel {
 
     // Stellschrauben
     private static final double BASE_SCALE_MULTIPLIER = 1.0; // exakte Zielgröße am Start
-    private static final double MAX_ZOOM_VARIATION = 0.6;    // nur positive Variation (reinzoomen)
+    private static final double MAX_ZOOM_VARIATION = 0.25;    // nur positive Variation (reinzoomen)
     private static final double ZOOM_SPEED = 0.003;
     private static final double PAN_SPEED_X = 0.005;
     private static final double PAN_SPEED_Y = 0.005;
@@ -28,7 +28,6 @@ public class AnimatedImagePanel extends JPanel {
     private final Timer animationTimer;
     private final int baseWidth;
     private final int baseHeight;
-    private final double baseScale;
 
     private double zoomPhase = 0;
     private double panPhaseX = 0;
@@ -41,10 +40,6 @@ public class AnimatedImagePanel extends JPanel {
         this.image = toBufferedImage(image);
         this.baseWidth = newWidth;
         this.baseHeight = newHeight;
-
-        double scaleX = (double) newWidth / image.getWidth(null);
-        double scaleY = (double) newHeight / image.getHeight(null);
-        this.baseScale = Math.min(scaleX, scaleY) * BASE_SCALE_MULTIPLIER;
 
         setDoubleBuffered(true);
 
@@ -92,24 +87,36 @@ public class AnimatedImagePanel extends JPanel {
         if (initialZoom == 0)
             initialZoom = zoomFactor;
 
-        System.out.println("Zoom faktor " + zoomFactor);
-
         if (zoomFactor < initialZoom)
             zoomFactor = initialZoom;
 
-        double zoom = baseScale * zoomFactor;
+        boolean moveImages = Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages();
+        if (!moveImages) {
+            zoomFactor = 1.0;
+        }
+
+        int targetWidth = getWidth() > 0 ? getWidth() : baseWidth;
+        int targetHeight = getHeight() > 0 ? getHeight() : baseHeight;
+
+        double coverScale = Math.max(
+                (double) targetWidth / image.getWidth(),
+                (double) targetHeight / image.getHeight()
+        );
+        double zoom = coverScale * BASE_SCALE_MULTIPLIER * zoomFactor;
 
         int iw = (int) (image.getWidth() * zoom);
         int ih = (int) (image.getHeight() * zoom);
 
-        int maxPanX = Math.max(0, (iw - getWidth()) / 2);
-        int maxPanY = Math.max(0, (ih - getHeight()) / 2);
+        int overflowX = Math.max(0, iw - targetWidth);
+        int overflowY = Math.max(0, ih - targetHeight);
+        int maxPanX = overflowX / 2;
+        int maxPanY = overflowY / 6;
 
-        int dx = (int) (Math.sin(panPhaseX) * maxPanX);
-        int dy = (int) (Math.sin(panPhaseY) * maxPanY);
+        int dx = moveImages ? (int) (Math.sin(panPhaseX) * maxPanX) : 0;
+        int dy = moveImages ? (int) (Math.sin(panPhaseY) * maxPanY) : 0;
 
-        int x = (getWidth() - iw) / 2 + dx;
-        int y = (getHeight() - ih) / 2 + dy;
+        int x = (targetWidth - iw) / 2 + dx;
+        int y = -(overflowY / 3) + dy;
 
         g2.drawImage(image, x, y, iw, ih, null);
     }

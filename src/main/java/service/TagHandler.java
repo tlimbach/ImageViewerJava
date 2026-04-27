@@ -4,14 +4,12 @@ import event.CurrentDirectoryChangedEvent;
 import model.AppState;
 import org.json.JSONArray;
 import org.json.JSONObject;
-import org.json.JSONTokener;
 
 import java.io.*;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
 
-public class TagHandler {
+public class TagHandler extends JsonSettingsStore {
 
     private static final TagHandler tagHandler = new TagHandler();
 
@@ -20,25 +18,26 @@ public class TagHandler {
     }
 
 
-    private JSONObject tagData;
-
     private TagHandler() {
         load();
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> load());
     }
 
 
-    private File getTagFile() {
-        Path settingsDir = AppState.get().getSettingsDirectory();
-        return settingsDir != null
-                ? settingsDir.resolve("media_tags.json").toFile()
-                : new File("media_tags.json"); // Fallback (optional)
+    @Override
+    protected String settingsFileName() {
+        return "media_tags.json";
+    }
+
+    @Override
+    public synchronized void load() {
+        super.load();
     }
 
     public List<String> getTagsForFile(String filename) {
-        if (!tagData.has(filename)) return Collections.emptyList();
+        if (!data.has(filename)) return Collections.emptyList();
 
-        JSONArray arr = tagData.optJSONArray(filename);
+        JSONArray arr = data.optJSONArray(filename);
         if (arr == null) return Collections.emptyList();
 
         List<String> tags = new ArrayList<>();
@@ -53,45 +52,19 @@ public class TagHandler {
 
     public void setTagsToFile(List<String> tags, String filename) {
         if (tags == null || tags.isEmpty()) {
-            tagData.remove(filename);
+            data.remove(filename);
         } else {
             JSONArray arr = new JSONArray(tags);
-            tagData.put(filename, arr);
+            data.put(filename, arr);
         }
         save();
-    }
-
-    public void load() {
-        File file = getTagFile();
-        if (!file.exists()) {
-            tagData = new JSONObject();
-            return;
-        }
-
-        try (InputStream is = new FileInputStream(file)) {
-            JSONTokener tokener = new JSONTokener(is);
-            tagData = new JSONObject(tokener);
-        } catch (Exception e) {
-            e.printStackTrace();
-            tagData = new JSONObject();
-        }
-
-        cleanup();
-    }
-
-    private void save() {
-        try (Writer writer = Files.newBufferedWriter(getTagFile().toPath())) {
-            writer.write(tagData.toString(2));
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
     }
 
     public Map<String, Integer> allTags() {
         Map<String, Integer> tagCounts = new HashMap<>();
 
-        for (String key : tagData.keySet()) {
-            JSONArray arr = tagData.optJSONArray(key);
+        for (String key : data.keySet()) {
+            JSONArray arr = data.optJSONArray(key);
             if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) {
                     String tag = arr.optString(i, "").trim();
@@ -110,8 +83,8 @@ public class TagHandler {
 
         List<String> matchingFiles = new ArrayList<>();
 
-        for (String key : tagData.keySet()) {
-            JSONArray arr = tagData.optJSONArray(key);
+        for (String key : data.keySet()) {
+            JSONArray arr = data.optJSONArray(key);
             if (arr != null) {
                 Set<String> fileTags = new HashSet<>();
                 for (int i = 0; i < arr.length(); i++) {
@@ -155,10 +128,10 @@ public class TagHandler {
 
         for (File file : files) {
             String filename = file.getName();
-            if (!tagData.has(filename)) {
+            if (!data.has(filename)) {
                 untagged.add(file);
             } else {
-                JSONArray arr = tagData.optJSONArray(filename);
+                JSONArray arr = data.optJSONArray(filename);
                 if (arr == null || arr.isEmpty()) {
                     untagged.add(file);
                 }
@@ -168,37 +141,11 @@ public class TagHandler {
         return untagged;
     }
 
-    /**
-     * Entfernt Einträge für Dateien, die im aktuellen Ordner nicht mehr existieren.
-     * Führt ein Save aus, falls Änderungen auftraten.
-     */
-    private void cleanup() {
-        Path currentDir = AppState.get().getCurrentDirectory();
-        if (currentDir == null) return;
-
-        boolean modified = false;
-
-        Iterator<String> iter = tagData.keySet().iterator();
-        while (iter.hasNext()) {
-            String filename = iter.next();
-            Path filePath = currentDir.resolve(filename);
-            if (!Files.exists(filePath)) {
-                iter.remove();
-                modified = true;
-            }
-        }
-
-        if (modified) {
-            save();
-            System.out.println("[Cleanup] Ungültige Einträge in media_tags.json entfernt.");
-        }
-    }
-
     public void renameTag(String oldTag, String newTag) {
         boolean changed = false;
 
-        for (String key : tagData.keySet()) {
-            JSONArray arr = tagData.optJSONArray(key);
+        for (String key : data.keySet()) {
+            JSONArray arr = data.optJSONArray(key);
             if (arr == null) continue;
 
             List<String> tags = new ArrayList<>();
@@ -217,7 +164,7 @@ public class TagHandler {
                 newArr.put(tag);
             }
 
-            tagData.put(key, newArr);
+            data.put(key, newArr);
             changed = true;
         }
 

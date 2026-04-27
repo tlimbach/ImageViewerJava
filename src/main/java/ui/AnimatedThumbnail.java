@@ -68,7 +68,7 @@ public class AnimatedThumbnail {
                     e.printStackTrace();
                     return null;
                 }
-            }).thenAccept(icon -> {
+            }, Controller.getInstance().getExecutorService()).thenAccept(icon -> {
                 if (icon != null && isRunning) {
                     cachedIcons.set(idx, icon);
                     SwingUtilities.invokeLater(() -> {
@@ -102,8 +102,15 @@ public class AnimatedThumbnail {
     }
 
     public void preload() {
+        preload(imageFiles == null ? 0 : imageFiles.size());
+    }
+
+    public void preload(int maxFrames) {
+        if (imageFiles == null || maxFrames <= 0) return;
         ExecutorService executor = Controller.getInstance().getExecutorService();
-        for (File file : imageFiles) {
+        int count = Math.min(maxFrames, imageFiles.size());
+        for (int i = 0; i < count; i++) {
+            File file = imageFiles.get(i);
             executor.submit(() -> ThumbnailCache.getByteArray(file));
         }
     }

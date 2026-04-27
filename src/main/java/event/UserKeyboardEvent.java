@@ -1,4 +1,4 @@
 package event;
 
-public record UserKeyboardEvent(String direction) {
+public record UserKeyboardEvent(UserCommand command) {
 }
