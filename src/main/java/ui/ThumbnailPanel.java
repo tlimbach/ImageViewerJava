@@ -869,9 +869,11 @@ public class ThumbnailPanel extends JPanel {
 //                                image = AnaglyphUtils.createSimpleAnaglyphVarianteC(images.get(0), images.get(1), p, 0.8f, 1.0f);
 //                                AppState.get().setPreloadedImage(image);
                             } else {
-                                image = ImageIO.read(AppState.get().getFileForCurrentDirectory(file));
+                                File resolved = AppState.get().getFileForCurrentDirectory(file);
+                                image = ImageIO.read(resolved);
                                 H.out("setting preloaded image " + file.getName());
                                 AppState.get().setPreloadedImage(image);
+                                AppState.get().setPreloadedImageFile(resolved);
                             }
 
                         } catch (IOException ex) {

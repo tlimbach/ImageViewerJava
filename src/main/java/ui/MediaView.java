@@ -310,12 +310,14 @@ public class MediaView {
 
             } else {
                 // Normales Bild oder Preload verwenden
-                image = AppState.get().getPreloadedImage();
+                File preloadedImageFile = AppState.get().getPreloadedImageFile();
+                image = file.equals(preloadedImageFile) ? AppState.get().getPreloadedImage() : null;
                 if (image == null) {
                     image = ImageIO.read(file);
                 } else {
                     H.out("preload hat gezogen");
                     AppState.get().setPreloadedImage(null);
+                    AppState.get().setPreloadedImageFile(null);
                 }
             }
         } catch (IOException e) {

@@ -29,6 +29,8 @@ public class AppState {
 
    private BufferedImage preloadedImage;
 
+   private File preloadedImageFile;
+
    public Path getSettingsDirectory() {
       Path currentDir = getCurrentDirectory();
       if (currentDir == null) return null;
