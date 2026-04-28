@@ -5,8 +5,11 @@ import model.AppState;
 
 import javax.swing.*;
 import java.io.File;
-import java.nio.file.Path;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -30,6 +33,26 @@ public class MediaService {
 
         return Arrays.stream(files)
                 .filter(f -> Controller.isImageFile(f) || Controller.isVideoFile(f))
+                .sorted(creationDateDescendingComparator())
                 .collect(Collectors.toList());
+    }
+
+    public static void sortByCreationDateDescending(List<File> files) {
+        files.sort(creationDateDescendingComparator());
+    }
+
+    private static Comparator<File> creationDateDescendingComparator() {
+        return Comparator
+                .comparingLong(MediaService::creationTimeMillis)
+                .reversed()
+                .thenComparing(File::getName, String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private static long creationTimeMillis(File file) {
+        try {
+            return Files.readAttributes(file.toPath(), BasicFileAttributes.class).creationTime().toMillis();
+        } catch (IOException e) {
+            return file.lastModified();
+        }
     }
 }

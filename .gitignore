@@ -38,3 +38,5 @@ target/.DS_Store
 .idea/misc.xml
 .idea/uiDesigner.xml
 src/.DS_Store
+target/maven-status/maven-compiler-plugin/compile/default-compile/createdFiles.lst
+target/maven-status/maven-compiler-plugin/compile/default-compile/inputFiles.lst

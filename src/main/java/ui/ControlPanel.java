@@ -9,6 +9,7 @@ import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -119,6 +120,7 @@ public class ControlPanel extends JPanel {
 
     private void addFileChooserButton() {
         JButton btnFileChooser = new JButton("Verzeichnis wählen");
+        JButton btnOpenFinder = new JButton("Finder");
         JLabel lblInfo = new JLabel("Noch nichts gewählt");
 
         btnFileChooser.addActionListener(a -> {
@@ -158,7 +160,21 @@ public class ControlPanel extends JPanel {
             EventBus.get().publish(new CurrentDirectoryChangedEvent());
         });
 
-        add(H.makeHorizontalPanel(btnFileChooser));
+        btnOpenFinder.addActionListener(a -> {
+            Path currentDirectory = AppState.get().getCurrentDirectory();
+            if (currentDirectory == null) {
+                JOptionPane.showMessageDialog(this, "Bitte zuerst ein Verzeichnis wählen.", "Finder", JOptionPane.INFORMATION_MESSAGE);
+                return;
+            }
+
+            try {
+                Desktop.getDesktop().open(currentDirectory.toFile());
+            } catch (IOException ex) {
+                JOptionPane.showMessageDialog(this, "Finder konnte nicht geöffnet werden.", "Finder", JOptionPane.ERROR_MESSAGE);
+            }
+        });
+
+        add(H.makeHorizontalPanel(btnFileChooser, btnOpenFinder));
     }
 
     private void addSlideshowControls() {

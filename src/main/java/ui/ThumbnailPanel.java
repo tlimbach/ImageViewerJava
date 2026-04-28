@@ -7,16 +7,33 @@ import service.*;
 import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
+import java.awt.datatransfer.UnsupportedFlavorException;
 import java.awt.event.*;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.Reader;
+import java.net.MalformedURLException;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.net.URL;
+import java.net.URLConnection;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class ThumbnailPanel extends JPanel {
 
@@ -43,6 +60,8 @@ public class ThumbnailPanel extends JPanel {
     private static final int PROGRESS_UPDATE_STEP = 25;
     private JPanel pendingRefreshPanel;
     private final Timer thumbnailUiRefreshTimer = new Timer(80, e -> flushThumbnailUiRefresh());
+    private final TransferHandler fileDropTransferHandler = createFileDropTransferHandler();
+    private static final Pattern HTML_IMAGE_SRC_PATTERN = Pattern.compile("<img[^>]+src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
 
 
     public ThumbnailPanel() {
@@ -59,6 +78,9 @@ public class ThumbnailPanel extends JPanel {
         scrollPane.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_NEVER);
 
         add(scrollPane, BorderLayout.CENTER);
+        installFileDropHandler(this);
+        installFileDropHandler(scrollPane);
+        installFileDropHandler(scrollPane.getViewport());
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
             Controller.getInstance().getExecutorService().submit(() -> {
@@ -263,6 +285,10 @@ public class ThumbnailPanel extends JPanel {
                 // Single + Double: Zähler über ClickCount
                 if (e.getClickCount() == 1) {
                     H.out("once pressed " + file.getName());
+                    if (Controller.isImageFile(file) && MediaView.getInstance().isShowingImage(file)) {
+                        MediaView.getInstance().hideFrame();
+                        return;
+                    }
                     AppState.get().setCurrentFile(file);
                     Controller.getInstance().handleMedia(file, false);
                 } else if (e.getClickCount() == 2) {
@@ -344,6 +370,11 @@ public class ThumbnailPanel extends JPanel {
         }
 
         List<File> mediaFiles = new ArrayList<>(_mediaFiles);
+        MediaService.sortByCreationDateDescending(mediaFiles);
+        Map<String, Integer> displayOrder = new HashMap<>();
+        for (int i = 0; i < mediaFiles.size(); i++) {
+            displayOrder.put(mediaFiles.get(i).getName(), i);
+        }
 
         long generation = ++currentGenerationId;
 
@@ -353,7 +384,9 @@ public class ThumbnailPanel extends JPanel {
 
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
+        installFileDropHandler(newGridPanel);
         JLabel loadingLabel = new JLabel("Lade Medien ...", SwingConstants.CENTER);
+        installFileDropHandler(loadingLabel);
         loadingLabel.setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
 
         runOnEdtAndWait(() -> {
@@ -412,13 +445,365 @@ public class ThumbnailPanel extends JPanel {
                         if (scrollPane.getViewport().getView() == loadingLabel) {
                             scrollPane.setViewportView(newGridPanel);
                         }
-                        addThumbnailLabelTo(newGridPanel, type, thumbFiles, file);
+                        addThumbnailLabelTo(newGridPanel, type, thumbFiles, file, displayOrder);
                         thumbnailsLoadedCount++;
                     });
                 }
             });
         }
 
+    }
+
+    private void installFileDropHandler(JComponent component) {
+        component.setTransferHandler(fileDropTransferHandler);
+    }
+
+    private TransferHandler createFileDropTransferHandler() {
+        return new TransferHandler() {
+            @Override
+            public boolean canImport(TransferSupport support) {
+                boolean canImport = AppState.get().getCurrentDirectory() != null
+                        && (support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)
+                        || support.isDataFlavorSupported(DataFlavor.imageFlavor)
+                        || support.isDataFlavorSupported(DataFlavor.stringFlavor)
+                        || hasTextFlavor(support.getDataFlavors())
+                        || hasUrlFlavor(support.getDataFlavors()));
+
+                if (canImport) {
+                    logDrop("canImport=true, action=" + support.getDropAction());
+                    logTransferFlavors("[ThumbnailPanel DnD]", support.getDataFlavors());
+                }
+
+                return canImport;
+            }
+
+            @Override
+            public boolean importData(TransferSupport support) {
+                if (!canImport(support)) return false;
+
+                try {
+                    Transferable transferable = support.getTransferable();
+                    logDrop("importData gestartet");
+                    logTransferFlavors("[ThumbnailPanel DnD]", transferable.getTransferDataFlavors());
+
+                    if (transferable.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
+                        @SuppressWarnings("unchecked")
+                        List<File> droppedFiles = (List<File>) transferable.getTransferData(DataFlavor.javaFileListFlavor);
+                        List<File> imageFiles = droppedFiles.stream()
+                                .filter(File::isFile)
+                                .filter(Controller::isImageFile)
+                                .toList();
+
+                        logDrop("Lokale Dateien empfangen: " + droppedFiles.size() + ", Bilder: " + imageFiles.size());
+
+                        if (imageFiles.isEmpty()) {
+                            JOptionPane.showMessageDialog(thisComponent(), "Keine unterstützten Bilddateien gefunden.", "Drag and Drop", JOptionPane.INFORMATION_MESSAGE);
+                            return false;
+                        }
+
+                        Controller.getInstance().getExecutorService().submit(() -> copyDroppedImages(imageFiles));
+                        return true;
+                    }
+
+                    URL url = extractUrl(transferable);
+                    if (url != null) {
+                        logDrop("URL empfangen: " + url);
+                        Controller.getInstance().getExecutorService().submit(() -> downloadDroppedImage(url));
+                        return true;
+                    }
+
+                    if (transferable.isDataFlavorSupported(DataFlavor.imageFlavor)) {
+                        logDrop("Direktes Browser-Bild empfangen, aber nicht gespeichert: Das waere eine neu kodierte grosse PNG-Datei ohne Originalnamen.");
+                        JOptionPane.showMessageDialog(
+                                thisComponent(),
+                                "Der Browser hat nur ein gerendertes Bild geliefert, keine Originaldatei/URL.\n"
+                                        + "Das Bild wurde nicht gespeichert, damit keine grosse neu kodierte PNG-Datei entsteht.",
+                                "Drag and Drop",
+                                JOptionPane.INFORMATION_MESSAGE
+                        );
+                        return false;
+                    }
+
+                    logDrop("Kein verwertbares Bildformat im Drop gefunden");
+                    JOptionPane.showMessageDialog(thisComponent(), "Keine unterstützten Bilddaten gefunden.", "Drag and Drop", JOptionPane.INFORMATION_MESSAGE);
+                    return false;
+                } catch (UnsupportedFlavorException | IOException e) {
+                    showDropError("Dateien konnten nicht gelesen werden.", e);
+                    return false;
+                }
+            }
+
+            private Component thisComponent() {
+                return ThumbnailPanel.this;
+            }
+        };
+    }
+
+    private boolean hasUrlFlavor(DataFlavor[] flavors) {
+        for (DataFlavor flavor : flavors) {
+            if (URL.class.isAssignableFrom(flavor.getRepresentationClass())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private boolean hasTextFlavor(DataFlavor[] flavors) {
+        return DataFlavor.selectBestTextFlavor(flavors) != null;
+    }
+
+    private URL extractUrl(Transferable transferable) throws UnsupportedFlavorException, IOException {
+        for (DataFlavor flavor : transferable.getTransferDataFlavors()) {
+            if (URL.class.isAssignableFrom(flavor.getRepresentationClass())) {
+                Object data = transferable.getTransferData(flavor);
+                if (data instanceof URL url) {
+                    return url;
+                }
+            }
+        }
+
+        String text = null;
+        if (transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+            text = (String) transferable.getTransferData(DataFlavor.stringFlavor);
+        } else {
+            DataFlavor textFlavor = DataFlavor.selectBestTextFlavor(transferable.getTransferDataFlavors());
+            if (textFlavor != null) {
+                text = readTextFlavor(transferable, textFlavor);
+            }
+        }
+
+        if (text == null || text.isBlank()) return null;
+
+        logDrop("String-Drop-Inhalt: " + abbreviate(text));
+
+        Matcher imageSrcMatcher = HTML_IMAGE_SRC_PATTERN.matcher(text);
+        if (imageSrcMatcher.find()) {
+            return toUrl(imageSrcMatcher.group(1));
+        }
+
+        for (String line : text.split("\\R")) {
+            String trimmed = line.trim();
+            if (trimmed.isEmpty() || trimmed.startsWith("#")) continue;
+
+            URL url = toUrl(trimmed);
+            if (url != null) {
+                return url;
+            }
+        }
+
+        return null;
+    }
+
+    private String readTextFlavor(Transferable transferable, DataFlavor textFlavor) throws UnsupportedFlavorException, IOException {
+        StringBuilder text = new StringBuilder();
+        try (Reader reader = textFlavor.getReaderForText(transferable)) {
+            char[] buffer = new char[2048];
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                text.append(buffer, 0, read);
+            }
+        }
+        logDrop("Text-Flavor gelesen: " + textFlavor.getMimeType());
+        return text.toString();
+    }
+
+    private URL toUrl(String text) {
+        try {
+            URI uri = new URI(text);
+            if ("http".equalsIgnoreCase(uri.getScheme()) || "https".equalsIgnoreCase(uri.getScheme())) {
+                return uri.toURL();
+            }
+        } catch (URISyntaxException | MalformedURLException e) {
+            logDrop("Keine gueltige URL: " + text);
+        }
+        return null;
+    }
+
+    private void copyDroppedImages(List<File> imageFiles) {
+        Path targetDirectory = AppState.get().getCurrentDirectory();
+        if (targetDirectory == null) return;
+
+        int copied = 0;
+        List<String> failed = new ArrayList<>();
+
+        for (File source : imageFiles) {
+            try {
+                Path sourcePath = source.toPath().toAbsolutePath().normalize();
+                Path targetPath = uniqueTargetPath(targetDirectory, source.getName());
+
+                if (sourcePath.equals(targetPath.toAbsolutePath().normalize())) {
+                    continue;
+                }
+
+                Files.copy(sourcePath, targetPath);
+                copied++;
+                logDrop("Kopiert: " + sourcePath + " -> " + targetPath);
+            } catch (IOException e) {
+                logDrop("Kopieren fehlgeschlagen fuer " + source.getAbsolutePath() + ": " + e.getMessage());
+                failed.add(source.getName());
+            }
+        }
+
+        if (copied > 0) {
+            reloadDirectory();
+        }
+
+        if (!failed.isEmpty()) {
+            SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                    this,
+                    "Einige Bilder konnten nicht kopiert werden:\n" + String.join("\n", failed),
+                    "Drag and Drop",
+                    JOptionPane.ERROR_MESSAGE
+            ));
+        }
+    }
+
+    private void downloadDroppedImage(URL url) {
+        Path targetDirectory = AppState.get().getCurrentDirectory();
+        if (targetDirectory == null) return;
+
+        try {
+            URLConnection connection = url.openConnection();
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0 ImageViewer");
+            String contentDisposition = connection.getHeaderField("Content-Disposition");
+            String contentType = connection.getContentType();
+            String fileName = fileNameFromDownloadMetadata(url, contentDisposition, contentType);
+            Path targetPath = uniqueTargetPath(targetDirectory, fileName);
+
+            try (InputStream inputStream = connection.getInputStream()) {
+                Files.copy(inputStream, targetPath);
+            }
+
+            logDrop("Bild von URL gespeichert: " + url
+                    + ", contentType=" + contentType
+                    + ", contentDisposition=" + contentDisposition
+                    + " -> " + targetPath);
+            reloadDirectory();
+        } catch (IOException e) {
+            showDropError("Bild von URL konnte nicht gespeichert werden.", e);
+        }
+    }
+
+    private String fileNameFromDownloadMetadata(URL url, String contentDisposition, String contentType) {
+        String fileName = fileNameFromContentDisposition(contentDisposition);
+        if (fileName == null || fileName.isBlank()) {
+            fileName = fileNameFromUrl(url);
+        }
+
+        if (!Controller.isImageFile(new File(fileName))) {
+            fileName = fileName + extensionForContentType(contentType);
+        }
+
+        if (!Controller.isImageFile(new File(fileName))) {
+            fileName = generatedImageFileName(contentType);
+        }
+
+        return fileName;
+    }
+
+    private String fileNameFromContentDisposition(String contentDisposition) {
+        if (contentDisposition == null || contentDisposition.isBlank()) {
+            return null;
+        }
+
+        Matcher utf8Matcher = Pattern.compile("filename\\*=UTF-8''([^;]+)", Pattern.CASE_INSENSITIVE).matcher(contentDisposition);
+        if (utf8Matcher.find()) {
+            return sanitizeFileName(URLDecoder.decode(utf8Matcher.group(1).trim(), StandardCharsets.UTF_8));
+        }
+
+        Matcher matcher = Pattern.compile("filename=\"?([^\";]+)\"?", Pattern.CASE_INSENSITIVE).matcher(contentDisposition);
+        if (matcher.find()) {
+            return sanitizeFileName(matcher.group(1).trim());
+        }
+
+        return null;
+    }
+
+    private String fileNameFromUrl(URL url) {
+        String path = url.getPath();
+        if (path == null || path.isBlank()) {
+            return generatedImageFileName(null);
+        }
+
+        int lastSlash = path.lastIndexOf('/');
+        String fileName = lastSlash >= 0 ? path.substring(lastSlash + 1) : path;
+        fileName = URLDecoder.decode(fileName, StandardCharsets.UTF_8);
+        fileName = sanitizeFileName(fileName);
+
+        if (fileName.isBlank()) {
+            return generatedImageFileName(null);
+        }
+        return fileName;
+    }
+
+    private String extensionForContentType(String contentType) {
+        if (contentType == null) return "";
+        String normalized = contentType.toLowerCase();
+        if (normalized.contains("jpeg") || normalized.contains("jpg")) return ".jpg";
+        if (normalized.contains("png")) return ".png";
+        if (normalized.contains("gif")) return ".gif";
+        if (normalized.contains("webp")) return ".webp";
+        if (normalized.contains("bmp")) return ".bmp";
+        return "";
+    }
+
+    private String generatedImageFileName(String contentType) {
+        String extension = extensionForContentType(contentType);
+        if (extension.isBlank()) {
+            extension = ".jpg";
+        }
+        return UUID.randomUUID().toString().toUpperCase() + extension;
+    }
+
+    private String sanitizeFileName(String fileName) {
+        return fileName.replaceAll("[\\\\/:*?\"<>|]", "_").trim();
+    }
+
+    private Path uniqueTargetPath(Path targetDirectory, String fileName) {
+        Path targetPath = targetDirectory.resolve(fileName);
+        if (!Files.exists(targetPath)) {
+            return targetPath;
+        }
+
+        String baseName = fileName;
+        String extension = "";
+        int dotIndex = fileName.lastIndexOf('.');
+        if (dotIndex > 0) {
+            baseName = fileName.substring(0, dotIndex);
+            extension = fileName.substring(dotIndex);
+        }
+
+        int counter = 1;
+        do {
+            targetPath = targetDirectory.resolve(baseName + " " + counter + extension);
+            counter++;
+        } while (Files.exists(targetPath));
+
+        return targetPath;
+    }
+
+    private void showDropError(String message, Exception e) {
+        e.printStackTrace();
+        logDrop(message + " " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(this, message, "Drag and Drop", JOptionPane.ERROR_MESSAGE));
+    }
+
+    private void logTransferFlavors(String prefix, DataFlavor[] flavors) {
+        for (DataFlavor flavor : flavors) {
+            System.out.println(prefix + " Flavor: mime=" + flavor.getMimeType()
+                    + ", human=" + flavor.getHumanPresentableName()
+                    + ", class=" + flavor.getRepresentationClass().getName());
+        }
+    }
+
+    private void logDrop(String message) {
+        System.out.println("[ThumbnailPanel DnD] " + message);
+    }
+
+    private String abbreviate(String text) {
+        String normalized = text.replace('\n', ' ').replace('\r', ' ').trim();
+        if (normalized.length() <= 300) return normalized;
+        return normalized.substring(0, 300) + "...";
     }
 
     private void publishProgress(int loaded, int total) {
@@ -447,7 +832,7 @@ public class ThumbnailPanel extends JPanel {
         }
     }
 
-    private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file) {
+    private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file, Map<String, Integer> displayOrder) {
         JLabel label = new JLabel();
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.setVerticalAlignment(SwingConstants.CENTER);
@@ -542,8 +927,6 @@ public class ThumbnailPanel extends JPanel {
         }
 
         if (imagedOK) {
-            panel.add(label);
-
             AnimatedThumbnail aNail = new AnimatedThumbnail();
             aNail.imageFiles = thumbnailFiles;
             aNail.animationTimer = null;
@@ -551,7 +934,10 @@ public class ThumbnailPanel extends JPanel {
             aNail.isRunning = false;
             aNail.type = type;
             aNail.filename = file.getName();
-            animatedThumbnails.add(aNail);
+
+            int insertAt = findThumbnailInsertIndex(file, displayOrder);
+            panel.add(label, insertAt);
+            animatedThumbnails.add(insertAt, aNail);
             requestThumbnailUiRefresh(panel);
 
             if (animatedThumbnails.size() < 20) {
@@ -563,6 +949,17 @@ public class ThumbnailPanel extends JPanel {
                 loadRemainingVideoFramesAsync(aNail, file);
             }
         }
+    }
+
+    private int findThumbnailInsertIndex(File file, Map<String, Integer> displayOrder) {
+        int fileOrder = displayOrder.getOrDefault(file.getName(), Integer.MAX_VALUE);
+        for (int i = 0; i < animatedThumbnails.size(); i++) {
+            int existingOrder = displayOrder.getOrDefault(animatedThumbnails.get(i).filename, Integer.MAX_VALUE);
+            if (existingOrder > fileOrder) {
+                return i;
+            }
+        }
+        return animatedThumbnails.size();
     }
 
     private void requestThumbnailUiRefresh(JPanel panel) {

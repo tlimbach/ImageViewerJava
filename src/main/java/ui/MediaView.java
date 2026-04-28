@@ -245,20 +245,18 @@ public class MediaView {
         currentFile = file;
         stop();
         range = RangeHandler.getInstance().getRangeForFile(file);
+        fullscreen(AppState.get().isMediaviewFullscreen());
 
         if (Controller.isImageFile(file)) {
             if (isFirstAufruf) {
-                fullscreen(AppState.get().isMediaviewFullscreen());
                 isFirstAufruf = false;
-                // Wichtig: wir warten auf Validierung
-                SwingUtilities.invokeLater(() -> {
-                    frame.setVisible(true);
-                    showImage(file);
-                });
-                return;
             }
-            frame.setVisible(true);
-            showImage(file);
+            // Fullscreen-Umschaltung wird per invokeLater ausgefuehrt; danach erst mit finaler Fenstergroesse rendern.
+            SwingUtilities.invokeLater(() -> {
+                frame.setVisible(true);
+                frame.validate();
+                showImage(file);
+            });
         } else if (Controller.isVideoFile(file)) {
             showVideo(file, autostart);
         }
@@ -496,8 +494,34 @@ public class MediaView {
     }
 
     public void hideFrame() {
-        setVideoOverlayActive(false);
-        frame.setVisible(false);
+        Runnable task = () -> {
+            setVideoOverlayActive(false);
+            if (isFullscreen) {
+                GraphicsDevice device = getCurrentScreenDeviceForFrame(frame);
+                device.setFullScreenWindow(null);
+                frame.dispose();
+                frame.setUndecorated(false);
+                if (windowedBounds != null) {
+                    frame.setBounds(windowedBounds);
+                }
+                isFullscreen = false;
+            }
+            frame.setVisible(false);
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            task.run();
+        } else {
+            SwingUtilities.invokeLater(task);
+        }
+    }
+
+    public boolean isShowingImage(File _file) {
+        File file = AppState.get().getFileForCurrentDirectory(_file);
+        return frame.isVisible()
+                && currentFile != null
+                && currentFile.equals(file)
+                && Controller.isImageFile(file);
     }
 
     public void stopAndHide() {
