@@ -54,6 +54,7 @@ public class SlideshowManager {
 
         File file = files.get(currentIndex);
         AppState.get().setCurrentFile(file);
+        EventBus.get().publish(new CurrentlySelectedFileEvent(file));
         EventBus.get().publish(new MediaviewPlayEvent(true));
 
         endTime = System.currentTimeMillis() + durationSeconds * 1000L;
@@ -64,7 +65,6 @@ public class SlideshowManager {
         } else if (Controller.isVideoFile(file)) {
             mediaView.display(file, true);
             mediaView.getLeftBar().start(durationSeconds * 1000L);
-            EventBus.get().publish(new CurrentlySelectedFileEvent(file));
         }
     }
 

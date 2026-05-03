@@ -15,6 +15,7 @@ public class Main {
 //            Controller.printMemoryUsage();
 //        }, 0, 3, TimeUnit.SECONDS);
         UIManager.setLookAndFeel("javax.swing.plaf.nimbus.NimbusLookAndFeel");
+        AppIcon.installTaskbarIcon();
         new ImageViewer();
 
 

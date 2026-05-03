@@ -21,6 +21,8 @@ public class AppState {
 
    private File currentFile;
 
+   private Integer mediaLoadLimit;
+
    private boolean isIgnoreTimerange;
 
    private boolean autoOpenTagsDialog;

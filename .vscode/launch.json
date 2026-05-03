@@ -6,6 +6,7 @@
       "name": "Run ImageViewer",
       "request": "launch",
       "mainClass": "Main",
+      "preLaunchTask": "mvn compile",
       "cwd": "${workspaceFolder}"
     }
   ]

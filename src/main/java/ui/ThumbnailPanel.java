@@ -263,8 +263,8 @@ public class ThumbnailPanel extends JPanel {
 
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
+                                removeThumbnail(label);
                                 EventBus.get().publish(new TagsChangedEvent());
-                                Controller.getInstance().getExecutorService().submit(() -> reloadDirectory());
                             } else {
                                 JOptionPane.showMessageDialog(label, "Datei konnte nicht gelöscht werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
                             }
@@ -297,6 +297,52 @@ public class ThumbnailPanel extends JPanel {
                 }
             }
         };
+    }
+
+    private void removeThumbnail(JLabel label) {
+        int removedIndex = -1;
+        AnimatedThumbnail removedThumbnail = null;
+        for (int i = 0; i < animatedThumbnails.size(); i++) {
+            AnimatedThumbnail thumbnail = animatedThumbnails.get(i);
+            if (thumbnail.label == label) {
+                removedIndex = i;
+                removedThumbnail = thumbnail;
+                break;
+            }
+        }
+
+        if (removedIndex == -1) return;
+
+        removedThumbnail.stop();
+        animatedThumbnails.remove(removedIndex);
+
+        Container parent = label.getParent();
+        if (parent != null) {
+            parent.remove(label);
+            parent.revalidate();
+            parent.repaint();
+        }
+
+        if (selectedLabel == label || myLabel == label) {
+            selectedLabel = null;
+            myLabel = null;
+
+            if (!animatedThumbnails.isEmpty()) {
+                int nextIndex = Math.min(removedIndex, animatedThumbnails.size() - 1);
+                JLabel next = animatedThumbnails.get(nextIndex).label;
+                selectedLabel = next;
+                myLabel = next;
+                selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+
+                File nextFile = (File) next.getClientProperty("file");
+                if (nextFile != null) {
+                    AppState.get().setCurrentFile(nextFile);
+                    Controller.getInstance().handleMedia(nextFile, false);
+                }
+            }
+        }
+
+        updateVisibleThumbnails();
     }
 
     private List<File> loadImageThumbnail(File imageFile) {
@@ -369,8 +415,9 @@ public class ThumbnailPanel extends JPanel {
             return;
         }
 
-        List<File> mediaFiles = new ArrayList<>(_mediaFiles);
-        MediaService.sortByCreationDateDescending(mediaFiles);
+        List<File> sortedMediaFiles = new ArrayList<>(_mediaFiles);
+        MediaService.sortByCreationDateDescending(sortedMediaFiles);
+        final List<File> mediaFiles = new ArrayList<>(MediaService.applyCurrentMediaLimit(sortedMediaFiles));
         Map<String, Integer> displayOrder = new HashMap<>();
         for (int i = 0; i < mediaFiles.size(); i++) {
             displayOrder.put(mediaFiles.get(i).getName(), i);

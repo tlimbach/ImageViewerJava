@@ -46,6 +46,7 @@ public class MediaView {
 
     private MediaView() {
         frame = new JFrame("Media Viewer");
+        AppIcon.applyTo(frame);
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(1280, 768);
 

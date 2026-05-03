@@ -31,14 +31,23 @@ public class MediaService {
         File[] files = AppState.get().getCurrentDirectory().toFile().listFiles();
         if (files == null) return null;
 
-        return Arrays.stream(files)
+        List<File> mediaFiles = Arrays.stream(files)
                 .filter(f -> Controller.isImageFile(f) || Controller.isVideoFile(f))
                 .sorted(creationDateDescendingComparator())
                 .collect(Collectors.toList());
+        return applyCurrentMediaLimit(mediaFiles);
     }
 
     public static void sortByCreationDateDescending(List<File> files) {
         files.sort(creationDateDescendingComparator());
+    }
+
+    public static List<File> applyCurrentMediaLimit(List<File> files) {
+        Integer limit = AppState.get().getMediaLoadLimit();
+        if (limit == null || limit <= 0 || files.size() <= limit) {
+            return files;
+        }
+        return files.subList(0, limit);
     }
 
     private static Comparator<File> creationDateDescendingComparator() {

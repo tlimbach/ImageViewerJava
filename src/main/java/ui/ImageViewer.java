@@ -2,6 +2,7 @@ package ui;
 
 import event.CurrentDirectoryChangedEvent;
 import model.AppState;
+import service.AppIcon;
 import service.Controller;
 import service.EventBus;
 import service.SettingsService;
@@ -54,6 +55,7 @@ public class ImageViewer {
         controller.setMediaPanel(mediaView);
 
         JFrame frame = new JFrame("Image Viewer");
+        AppIcon.applyTo(frame);
         frame.setLayout(new BorderLayout());
         frame.add(controlPanel, BorderLayout.WEST);
         frame.add(thumbnailPanel, BorderLayout.CENTER);

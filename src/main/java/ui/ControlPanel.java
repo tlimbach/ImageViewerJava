@@ -8,6 +8,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
+import java.awt.event.FocusAdapter;
+import java.awt.event.FocusEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -21,6 +23,7 @@ public class ControlPanel extends JPanel {
     private final JLabel lblThumbnailsLoadedCount = new JLabel("---------");
     private final JTextField txtTimerangeStart = new JTextField(5);
     private final JTextField txtTimerangeEnde = new JTextField(5);
+    private final JTextField txtMediaLimit = new JTextField(5);
     private final JCheckBox cbxIgnoreTimerange = new JCheckBox("Z. ignorieren");
 
 
@@ -174,7 +177,42 @@ public class ControlPanel extends JPanel {
             }
         });
 
+        txtMediaLimit.setToolTipText("Maximale Anzahl geladener Medien. Leer = alle.");
+        txtMediaLimit.addActionListener(a -> applyMediaLimitFromField());
+        txtMediaLimit.addFocusListener(new FocusAdapter() {
+            @Override
+            public void focusLost(FocusEvent e) {
+                applyMediaLimitFromField();
+            }
+        });
+
         add(H.makeHorizontalPanel(btnFileChooser, btnOpenFinder));
+        add(H.makeHorizontalPanel(new JLabel("Max Medien"), txtMediaLimit));
+    }
+
+    private void applyMediaLimitFromField() {
+        String value = txtMediaLimit.getText().trim();
+        Integer newLimit = null;
+        if (!value.isEmpty()) {
+            try {
+                newLimit = Integer.parseInt(value);
+                if (newLimit <= 0) {
+                    throw new NumberFormatException("Limit must be positive");
+                }
+            } catch (NumberFormatException ex) {
+                JOptionPane.showMessageDialog(this, "Bitte eine positive Zahl eingeben oder leer lassen.", "Max Medien", JOptionPane.ERROR_MESSAGE);
+                SwingUtilities.invokeLater(txtMediaLimit::requestFocusInWindow);
+                return;
+            }
+        }
+
+        Integer oldLimit = AppState.get().getMediaLoadLimit();
+        if (oldLimit == null ? newLimit == null : oldLimit.equals(newLimit)) {
+            return;
+        }
+
+        AppState.get().setMediaLoadLimit(newLimit);
+        Controller.getInstance().getExecutorService().submit(() -> Controller.getInstance().getThumbnailPanel().reloadDirectory());
     }
 
     private void addSlideshowControls() {
