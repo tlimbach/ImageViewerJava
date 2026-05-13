@@ -1,9 +1,11 @@
 package ui;
 
 import service.Controller;
+import service.ImageZoomHandler;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 
 public class AnimatedImagePanel extends JPanel {
@@ -28,6 +30,7 @@ public class AnimatedImagePanel extends JPanel {
     private final Timer animationTimer;
     private final int baseWidth;
     private final int baseHeight;
+    private final ImageZoomHandler.ZoomSelection zoomSelection;
 
     private double zoomPhase = 0;
     private double panPhaseX = 0;
@@ -36,10 +39,15 @@ public class AnimatedImagePanel extends JPanel {
     private double alteZoom = 0;
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
+        this(image, newWidth, newHeight, null);
+    }
+
+    public AnimatedImagePanel(Image image, int newWidth, int newHeight, ImageZoomHandler.ZoomSelection zoomSelection) {
         initialZoom = 0;
         this.image = toBufferedImage(image);
         this.baseWidth = newWidth;
         this.baseHeight = newHeight;
+        this.zoomSelection = zoomSelection;
 
         setDoubleBuffered(true);
 
@@ -98,14 +106,17 @@ public class AnimatedImagePanel extends JPanel {
         int targetWidth = getWidth() > 0 ? getWidth() : baseWidth;
         int targetHeight = getHeight() > 0 ? getHeight() : baseHeight;
 
-        double coverScale = Math.max(
-                (double) targetWidth / image.getWidth(),
-                (double) targetHeight / image.getHeight()
-        );
-        double zoom = coverScale * BASE_SCALE_MULTIPLIER * zoomFactor;
+        Rectangle2D viewRect = getBaseViewRect(targetWidth, targetHeight);
+        double zoom = Math.max(
+                targetWidth / viewRect.getWidth(),
+                targetHeight / viewRect.getHeight()
+        ) * BASE_SCALE_MULTIPLIER * zoomFactor;
 
         int iw = (int) (image.getWidth() * zoom);
         int ih = (int) (image.getHeight() * zoom);
+
+        int baseX = (int) Math.round(-viewRect.getX() * zoom);
+        int baseY = (int) Math.round(-viewRect.getY() * zoom);
 
         int overflowX = Math.max(0, iw - targetWidth);
         int overflowY = Math.max(0, ih - targetHeight);
@@ -115,10 +126,54 @@ public class AnimatedImagePanel extends JPanel {
         int dx = moveImages ? (int) (Math.sin(panPhaseX) * maxPanX) : 0;
         int dy = moveImages ? (int) (Math.sin(panPhaseY) * maxPanY) : 0;
 
-        int x = (targetWidth - iw) / 2 + dx;
-        int y = -(overflowY / 3) + dy;
+        int x = clamp(baseX + dx, targetWidth - iw, 0);
+        int y = clamp(baseY + dy, targetHeight - ih, 0);
 
         g2.drawImage(image, x, y, iw, ih, null);
+    }
+
+    private Rectangle2D getBaseViewRect(int targetWidth, int targetHeight) {
+        if (zoomSelection == null) {
+            return new Rectangle2D.Double(0, 0, image.getWidth(), image.getHeight());
+        }
+
+        double selectedX = clamp(zoomSelection.x(), 0, 1) * image.getWidth();
+        double selectedY = clamp(zoomSelection.y(), 0, 1) * image.getHeight();
+        double selectedWidth = clamp(zoomSelection.width(), 0, 1) * image.getWidth();
+        double selectedHeight = clamp(zoomSelection.height(), 0, 1) * image.getHeight();
+
+        if (selectedWidth <= 0 || selectedHeight <= 0 || targetWidth <= 0 || targetHeight <= 0) {
+            return new Rectangle2D.Double(0, 0, image.getWidth(), image.getHeight());
+        }
+
+        double viewportAspect = (double) targetWidth / targetHeight;
+        double selectedAspect = selectedWidth / selectedHeight;
+        double viewWidth = selectedWidth;
+        double viewHeight = selectedHeight;
+
+        if (selectedAspect < viewportAspect) {
+            viewWidth = selectedHeight * viewportAspect;
+        } else {
+            viewHeight = selectedWidth / viewportAspect;
+        }
+
+        viewWidth = Math.min(viewWidth, image.getWidth());
+        viewHeight = Math.min(viewHeight, image.getHeight());
+
+        double centerX = selectedX + selectedWidth / 2.0;
+        double centerY = selectedY + selectedHeight / 2.0;
+        double x = clamp(centerX - viewWidth / 2.0, 0, image.getWidth() - viewWidth);
+        double y = clamp(centerY - viewHeight / 2.0, 0, image.getHeight() - viewHeight);
+
+        return new Rectangle2D.Double(x, y, viewWidth, viewHeight);
+    }
+
+    private int clamp(int value, int min, int max) {
+        return Math.max(min, Math.min(max, value));
+    }
+
+    private double clamp(double value, double min, double max) {
+        return Math.max(min, Math.min(max, value));
     }
 
 

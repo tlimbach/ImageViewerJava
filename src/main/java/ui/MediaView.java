@@ -348,7 +348,12 @@ public class MediaView {
             );
             int newWidth = (int) Math.round(rotatedImage.getWidth() * scale);
             int newHeight = (int) Math.round(rotatedImage.getHeight() * scale);
-            AnimatedImagePanel animatedPanel = new AnimatedImagePanel(rotatedImage, newWidth, newHeight);
+            AnimatedImagePanel animatedPanel = new AnimatedImagePanel(
+                    rotatedImage,
+                    newWidth,
+                    newHeight,
+                    ImageZoomHandler.getInstance().getZoomForFile(file)
+            );
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
         } else {
