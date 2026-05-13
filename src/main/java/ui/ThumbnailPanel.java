@@ -1237,7 +1237,13 @@ public class ThumbnailPanel extends JPanel {
             boolean needsDynamicThumbnail = rotation != 0
                     || (mode != ThumbnailZoomMode.STANDARD && ImageZoomHandler.getInstance().getZoomForFile(file) != null);
             if (!needsDynamicThumbnail && !thumbnailFiles.isEmpty()) {
-                label.setIcon(new ImageIcon(thumbnailFiles.get(0).getAbsolutePath()));
+                CompletableFuture
+                        .supplyAsync(() -> createCachedThumbnailIcon(thumbnailFiles.get(0)), Controller.getInstance().getExecutorService())
+                        .thenAccept(icon -> {
+                            if (icon != null) {
+                                SwingUtilities.invokeLater(() -> label.setIcon(icon));
+                            }
+                        });
             } else {
                 CompletableFuture.runAsync(() -> {
                     ThumbnailRenderResult result = createImageThumbnailIcon(file);
@@ -1360,6 +1366,15 @@ public class ThumbnailPanel extends JPanel {
             e.printStackTrace();
             return null;
         }
+    }
+
+    private ImageIcon createCachedThumbnailIcon(File thumbnailFile) {
+        byte[] bytes = ThumbnailCache.getByteArray(thumbnailFile);
+        if (bytes == null) return null;
+        ImageIcon icon = new ImageIcon(bytes);
+        icon.getIconWidth();
+        icon.getIconHeight();
+        return icon;
     }
 
     private ThumbnailRenderResult renderImageThumbnail(BufferedImage image, File file, ThumbnailZoomMode mode) {

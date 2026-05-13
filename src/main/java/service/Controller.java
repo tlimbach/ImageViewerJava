@@ -18,6 +18,7 @@ public class Controller {
 
     private static final Controller instance = new Controller();
     private final ExecutorService ex;
+    private final int workerThreadCount;
 
     public static Controller getInstance() {
         return instance;
@@ -34,7 +35,9 @@ public class Controller {
     }
 
     private Controller() {
-        ex = Executors.newFixedThreadPool(4);
+        workerThreadCount = Math.max(1, Runtime.getRuntime().availableProcessors());
+        ex = Executors.newFixedThreadPool(workerThreadCount);
+        System.out.println("[Controller] Background worker threads: " + workerThreadCount);
     }
 
 
