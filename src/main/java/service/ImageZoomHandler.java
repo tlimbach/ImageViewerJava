@@ -1,6 +1,7 @@
 package service;
 
 import event.CurrentDirectoryChangedEvent;
+import event.ImageZoomChangedEvent;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -42,12 +43,14 @@ public class ImageZoomHandler extends JsonSettingsStore {
         json.put("height", zoom.height());
         data.put(file.getName(), json);
         save();
+        EventBus.get().publish(new ImageZoomChangedEvent(file));
     }
 
     public void resetZoomForFile(File file) {
         if (file == null) return;
         data.remove(file.getName());
         save();
+        EventBus.get().publish(new ImageZoomChangedEvent(file));
     }
 
     @Override

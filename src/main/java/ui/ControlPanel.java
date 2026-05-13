@@ -27,6 +27,7 @@ public class ControlPanel extends JPanel {
     private final JTextField txtTimerangeEnde = new JTextField(5);
     private final JTextField txtMediaLimit = new JTextField(5);
     private final JCheckBox cbxIgnoreTimerange = new JCheckBox("Z. ignorieren");
+    private final JComboBox<ThumbnailZoomMode> cmbThumbnailZoomMode = new JComboBox<>(ThumbnailZoomMode.values());
 
 
     private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
@@ -192,6 +193,10 @@ public class ControlPanel extends JPanel {
 
         add(H.makeHorizontalPanel(btnFileChooser, btnOpenFinder));
         add(H.makeHorizontalPanel(new JLabel("Max Medien"), txtMediaLimit));
+        cmbThumbnailZoomMode.addActionListener(a -> Controller.getInstance().getExecutorService().submit(
+                () -> Controller.getInstance().getThumbnailPanel().reloadDirectory()
+        ));
+        add(H.makeHorizontalPanel(new JLabel("Thumbs"), cmbThumbnailZoomMode));
     }
 
     private void applyMediaLimitFromField() {
@@ -546,6 +551,10 @@ public class ControlPanel extends JPanel {
 
     public SlideshowManager getSlideshowManager() {
         return slideshowManager;
+    }
+
+    public ThumbnailZoomMode getThumbnailZoomMode() {
+        return (ThumbnailZoomMode) cmbThumbnailZoomMode.getSelectedItem();
     }
 
     private void updateUntaggedFilesCount() {
