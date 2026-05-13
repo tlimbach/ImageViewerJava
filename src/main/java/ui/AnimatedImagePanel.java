@@ -1,6 +1,8 @@
 package ui;
 
+import event.ImageZoomPreviewEvent;
 import service.Controller;
+import service.EventBus;
 import service.ImageZoomHandler;
 
 import javax.swing.*;
@@ -120,6 +122,7 @@ public class AnimatedImagePanel extends JPanel {
         fullSizeButton.addActionListener(e -> {
             beginInteraction();
             zoomSelection = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
+            EventBus.get().publish(new ImageZoomPreviewEvent(file, zoomSelection));
             ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
             setOverlayVisible(false);
             repaint();

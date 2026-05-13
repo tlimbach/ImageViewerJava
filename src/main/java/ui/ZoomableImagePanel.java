@@ -181,7 +181,9 @@ public class ZoomableImagePanel extends JPanel {
     private void setFullSizeZoom() {
         if (file == null) return;
         previewZoom = null;
-        ImageZoomHandler.getInstance().setZoomForFile(file, new ImageZoomHandler.ZoomSelection(0, 0, 1, 1));
+        ImageZoomHandler.ZoomSelection fullSizeZoom = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
+        EventBus.get().publish(new ImageZoomPreviewEvent(file, fullSizeZoom));
+        ImageZoomHandler.getInstance().setZoomForFile(file, fullSizeZoom);
         setOverlayVisible(false);
         repaint();
     }

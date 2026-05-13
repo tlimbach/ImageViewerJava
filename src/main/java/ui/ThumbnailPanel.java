@@ -1574,11 +1574,18 @@ public class ThumbnailPanel extends JPanel {
             float phase = marchingAntsPhase;
             g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, MARCHING_ANTS_DASH, phase));
 
+            double inset = 6;
+            double x1 = Math.max(inset, rect.getX() + 1);
+            double y1 = Math.max(inset, rect.getY() + 1);
+            double x2 = Math.min(getIconWidth() - inset, rect.getMaxX() - 1);
+            double y2 = Math.min(getIconHeight() - inset, rect.getMaxY() - 1);
+            if (x2 <= x1 || y2 <= y1) return;
+
             Rectangle2D drawRect = new Rectangle2D.Double(
-                    x + rect.getX() + 1,
-                    y + rect.getY() + 1,
-                    Math.max(0, rect.getWidth() - 2),
-                    Math.max(0, rect.getHeight() - 2)
+                    x + x1,
+                    y + y1,
+                    x2 - x1,
+                    y2 - y1
             );
 
             g2.setColor(Color.BLACK);
