@@ -70,6 +70,7 @@ public class ThumbnailPanel extends JPanel {
     private static final String ZOOM_IMAGE_SIZE_PROPERTY = "zoomImageSize";
     private static final String ZOOM_RENDER_IMAGE_PROPERTY = "zoomRenderImage";
     private static final int THUMBNAIL_PAN_START_DISTANCE = 5;
+    private static final float[] MARCHING_ANTS_DASH = {7f, 7f};
 
     private JLabel zoomDragLabel;
     private File zoomDragFile;
@@ -82,12 +83,15 @@ public class ThumbnailPanel extends JPanel {
     private File thumbnailPressFile;
     private Point thumbnailPressPoint;
     private int thumbnailPressClickCount;
+    private float marchingAntsPhase;
+    private final Timer marchingAntsTimer = new Timer(220, e -> repaintMarchingAntsThumbnails());
 
     public ThumbnailPanel() {
 
 
         mouseListener = createMouseListener();
         thumbnailUiRefreshTimer.setRepeats(false);
+        marchingAntsTimer.start();
 
         setLayout(new BorderLayout());
         scrollPane = new JScrollPane();
@@ -514,7 +518,7 @@ public class ThumbnailPanel extends JPanel {
                 BufferedImage preview = copyImage(baseThumbnail);
                 Rectangle2D visibleRect = paintGrayedOutZoomMask(preview, size, zoom);
                 applyThumbnailRenderResult(label, new ThumbnailRenderResult(
-                        new ImageIcon(preview),
+                        new MarchingAntsIcon(preview, visibleRect),
                         visibleRect,
                         bounds,
                         size,
@@ -596,7 +600,7 @@ public class ThumbnailPanel extends JPanel {
         paintGrayedOutZoomMask(preview, zoomDragImageSize, zoom);
         Rectangle2D visibleRect = getVisibleZoomRectInThumbnail(zoomDragImageSize, zoom);
         ThumbnailRenderResult result = new ThumbnailRenderResult(
-                new ImageIcon(preview),
+                new MarchingAntsIcon(preview, visibleRect),
                 visibleRect,
                 zoomDragImageBounds,
                 zoomDragImageSize,
@@ -642,6 +646,17 @@ public class ThumbnailPanel extends JPanel {
                 thumb.start();
             } else if (!visible && thumb.isRunning) {
                 thumb.stop();
+            }
+        }
+    }
+
+    private void repaintMarchingAntsThumbnails() {
+        marchingAntsPhase = (marchingAntsPhase + 0.6f) % 14f;
+        Rectangle view = scrollPane.getViewport().getViewRect();
+        for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
+            JLabel label = thumb.label;
+            if (label != null && label.getIcon() instanceof MarchingAntsIcon && label.getBounds().intersects(view)) {
+                label.repaint();
             }
         }
     }
@@ -1362,7 +1377,7 @@ public class ThumbnailPanel extends JPanel {
             Dimension imageSize = new Dimension(image.getWidth(), image.getHeight());
             Rectangle2D visibleRect = paintGrayedOutZoomMask(masked, imageSize, zoom);
             return new ThumbnailRenderResult(
-                    new ImageIcon(masked),
+                    new MarchingAntsIcon(masked, visibleRect),
                     visibleRect,
                     getStandardRenderedImageBounds(image),
                     imageSize,
@@ -1432,9 +1447,6 @@ public class ThumbnailPanel extends JPanel {
         outside.subtract(new Area(visibleRect));
         g.setColor(new Color(0, 0, 0, 150));
         g.fill(outside);
-        g.setColor(new Color(255, 255, 255, 180));
-        g.setStroke(new BasicStroke(2f));
-        g.draw(visibleRect);
         g.dispose();
         return visibleRect;
     }
@@ -1542,6 +1554,40 @@ public class ThumbnailPanel extends JPanel {
             Dimension imageSize,
             BufferedImage renderImage
     ) {
+    }
+
+    private class MarchingAntsIcon extends ImageIcon {
+        private final Rectangle2D rect;
+
+        MarchingAntsIcon(BufferedImage image, Rectangle2D rect) {
+            super(image);
+            this.rect = rect;
+        }
+
+        @Override
+        public synchronized void paintIcon(Component c, Graphics g, int x, int y) {
+            super.paintIcon(c, g, x, y);
+            if (rect == null) return;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            float phase = marchingAntsPhase;
+            g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, MARCHING_ANTS_DASH, phase));
+
+            Rectangle2D drawRect = new Rectangle2D.Double(
+                    x + rect.getX() + 1,
+                    y + rect.getY() + 1,
+                    Math.max(0, rect.getWidth() - 2),
+                    Math.max(0, rect.getHeight() - 2)
+            );
+
+            g2.setColor(Color.BLACK);
+            g2.draw(drawRect);
+            g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_BUTT, BasicStroke.JOIN_MITER, 10f, MARCHING_ANTS_DASH, phase + 7f));
+            g2.setColor(Color.WHITE);
+            g2.draw(drawRect);
+            g2.dispose();
+        }
     }
 
     private Image getScaledImagePreserveRatio(Image srcImg, int maxWidth, int maxHeight) {
