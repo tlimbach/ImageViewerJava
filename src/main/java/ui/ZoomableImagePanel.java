@@ -1,5 +1,7 @@
 package ui;
 
+import event.ImageZoomPreviewEvent;
+import service.EventBus;
 import service.ImageZoomHandler;
 
 import javax.swing.*;
@@ -13,16 +15,18 @@ import java.io.File;
 
 public class ZoomableImagePanel extends JPanel {
 
-    private static final int MENU_WIDTH = 96;
+    private static final int RESET_BUTTON_WIDTH = 96;
+    private static final int FULL_SIZE_BUTTON_WIDTH = 126;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MENU_GAP = 8;
-    private static final int DELETE_BUTTON_SIZE = 34;
+    private static final int DELETE_BUTTON_WIDTH = 116;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
 
     private final JButton resetButton = new JButton("Reset");
-    private final JButton deleteButton = new JButton("🗑");
+    private final JButton fullSizeButton = new JButton("Full size Zoom");
+    private final JButton deleteButton = new JButton("Bild löschen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
 
@@ -31,6 +35,9 @@ public class ZoomableImagePanel extends JPanel {
     private ImageZoomHandler.ZoomSelection previewZoom;
     private Point dragStart;
     private Rectangle selection;
+    private Point panStart;
+    private ImageZoomHandler.ZoomSelection panStartZoom;
+    private Rectangle2D panStartImageBounds;
     private boolean overlayVisible;
 
     public ZoomableImagePanel() {
@@ -42,6 +49,9 @@ public class ZoomableImagePanel extends JPanel {
         resetButton.setFocusable(false);
         resetButton.setVisible(false);
         resetButton.addActionListener(e -> resetZoom());
+        fullSizeButton.setFocusable(false);
+        fullSizeButton.setVisible(false);
+        fullSizeButton.addActionListener(e -> setFullSizeZoom());
         deleteButton.setFocusable(false);
         deleteButton.setVisible(false);
         deleteButton.setToolTipText("Bild löschen");
@@ -59,9 +69,12 @@ public class ZoomableImagePanel extends JPanel {
         };
         resetButton.addMouseListener(buttonMouseHandler);
         resetButton.addMouseMotionListener(buttonMouseHandler);
+        fullSizeButton.addMouseListener(buttonMouseHandler);
+        fullSizeButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
         add(resetButton);
+        add(fullSizeButton);
         add(deleteButton);
         add(deleteConfirmationOverlay);
         setComponentZOrder(deleteConfirmationOverlay, 0);
@@ -77,6 +90,9 @@ public class ZoomableImagePanel extends JPanel {
                     return;
                 }
                 if (image == null || !SwingUtilities.isLeftMouseButton(e)) return;
+                if (tryStartPan(e)) {
+                    return;
+                }
                 showOverlayTemporarily();
                 dragStart = e.getPoint();
                 selection = new Rectangle(dragStart);
@@ -85,6 +101,10 @@ public class ZoomableImagePanel extends JPanel {
 
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (panStart != null) {
+                    updatePan(e.getPoint(), false);
+                    return;
+                }
                 if (dragStart == null) return;
                 showOverlayTemporarily();
                 selection = createRectangle(dragStart, e.getPoint());
@@ -93,6 +113,11 @@ public class ZoomableImagePanel extends JPanel {
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                if (panStart != null) {
+                    updatePan(e.getPoint(), true);
+                    clearPan();
+                    return;
+                }
                 if (dragStart == null) return;
                 showOverlayTemporarily();
                 selection = createRectangle(dragStart, e.getPoint());
@@ -105,6 +130,7 @@ public class ZoomableImagePanel extends JPanel {
             @Override
             public void mouseMoved(MouseEvent e) {
                 showOverlayTemporarily();
+                updatePanCursor();
             }
 
             @Override
@@ -152,6 +178,14 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
     }
 
+    private void setFullSizeZoom() {
+        if (file == null) return;
+        previewZoom = null;
+        ImageZoomHandler.getInstance().setZoomForFile(file, new ImageZoomHandler.ZoomSelection(0, 0, 1, 1));
+        setOverlayVisible(false);
+        repaint();
+    }
+
     private void deleteCurrentImage() {
         if (file == null) return;
         deleteConfirmationOverlay.showForFile(file.getName(), () -> {
@@ -187,6 +221,7 @@ public class ZoomableImagePanel extends JPanel {
         boolean hasZoom = file != null && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
+        fullSizeButton.setVisible(visible && file != null);
         deleteButton.setVisible(visible && file != null);
         repaint();
     }
@@ -218,6 +253,55 @@ public class ZoomableImagePanel extends JPanel {
         ImageZoomHandler.getInstance().setZoomForFile(file, zoom);
     }
 
+    private boolean tryStartPan(MouseEvent e) {
+        ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
+        if (zoom == null || e.isShiftDown()) return false;
+
+        panStart = e.getPoint();
+        panStartZoom = previewZoom != null ? previewZoom : zoom;
+        panStartImageBounds = getRenderedImageBounds();
+        setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+        showOverlayTemporarily();
+        return true;
+    }
+
+    private void updatePan(Point point, boolean persist) {
+        if (panStart == null || panStartZoom == null || panStartImageBounds == null) return;
+
+        double dxImage = -(point.x - panStart.x) * image.getWidth() / panStartImageBounds.getWidth();
+        double dyImage = -(point.y - panStart.y) * image.getHeight() / panStartImageBounds.getHeight();
+
+        double newX = clamp(panStartZoom.x() + dxImage / image.getWidth(), 0, 1 - panStartZoom.width());
+        double newY = clamp(panStartZoom.y() + dyImage / image.getHeight(), 0, 1 - panStartZoom.height());
+
+        ImageZoomHandler.ZoomSelection updated = new ImageZoomHandler.ZoomSelection(
+                newX,
+                newY,
+                panStartZoom.width(),
+                panStartZoom.height()
+        );
+
+        previewZoom = updated;
+        EventBus.get().publish(new ImageZoomPreviewEvent(file, updated));
+        repaint();
+
+        if (persist) {
+            ImageZoomHandler.getInstance().setZoomForFile(file, updated);
+        }
+    }
+
+    private void clearPan() {
+        panStart = null;
+        panStartZoom = null;
+        panStartImageBounds = null;
+        updatePanCursor();
+    }
+
+    private void updatePanCursor() {
+        boolean canPan = file != null && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
+        setCursor(canPan ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+    }
+
     private Rectangle toImageRectangle(Rectangle panelRect, Rectangle2D imageBounds) {
         double scaleX = image.getWidth() / imageBounds.getWidth();
         double scaleY = image.getHeight() / imageBounds.getHeight();
@@ -236,15 +320,21 @@ public class ZoomableImagePanel extends JPanel {
     public void doLayout() {
         super.doLayout();
         resetButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - MENU_WIDTH - DELETE_BUTTON_SIZE - MENU_GAP - MENU_MARGIN),
+                Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
                 MENU_MARGIN,
-                MENU_WIDTH,
+                RESET_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        fullSizeButton.setBounds(
+                Math.max(MENU_MARGIN, getWidth() - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP - MENU_MARGIN),
+                MENU_MARGIN,
+                FULL_SIZE_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         deleteButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - DELETE_BUTTON_SIZE - MENU_MARGIN),
+                Math.max(MENU_MARGIN, getWidth() - DELETE_BUTTON_WIDTH - MENU_MARGIN),
                 MENU_MARGIN,
-                DELETE_BUTTON_SIZE,
+                DELETE_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         int confirmWidth = Math.min(360, Math.max(260, getWidth() - 80));
@@ -303,11 +393,17 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!resetButton.isVisible() && !deleteButton.isVisible()) return;
+        if (!resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
         int x = resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
         int y = resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
-        int right = Math.max(resetButton.getX() + resetButton.getWidth(), deleteButton.getX() + deleteButton.getWidth());
-        int bottom = Math.max(resetButton.getY() + resetButton.getHeight(), deleteButton.getY() + deleteButton.getHeight());
+        int right = Math.max(
+                Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth()),
+                deleteButton.getX() + deleteButton.getWidth()
+        );
+        int bottom = Math.max(
+                Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight()),
+                deleteButton.getY() + deleteButton.getHeight()
+        );
         g2.setColor(new Color(0, 0, 0, 120));
         g2.fillRoundRect(x - 6, y - 6, right - x + 12, bottom - y + 12, 8, 8);
     }

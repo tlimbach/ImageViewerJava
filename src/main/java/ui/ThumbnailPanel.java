@@ -69,6 +69,7 @@ public class ThumbnailPanel extends JPanel {
     private static final String ZOOM_IMAGE_BOUNDS_PROPERTY = "zoomImageBounds";
     private static final String ZOOM_IMAGE_SIZE_PROPERTY = "zoomImageSize";
     private static final String ZOOM_RENDER_IMAGE_PROPERTY = "zoomRenderImage";
+    private static final int THUMBNAIL_PAN_START_DISTANCE = 5;
 
     private JLabel zoomDragLabel;
     private File zoomDragFile;
@@ -76,6 +77,11 @@ public class ThumbnailPanel extends JPanel {
     private ImageZoomHandler.ZoomSelection zoomDragStartSelection;
     private Dimension zoomDragImageSize;
     private Rectangle2D zoomDragImageBounds;
+    private boolean zoomDragStarted;
+    private JLabel thumbnailPressLabel;
+    private File thumbnailPressFile;
+    private Point thumbnailPressPoint;
+    private int thumbnailPressClickCount;
 
     public ThumbnailPanel() {
 
@@ -133,6 +139,7 @@ public class ThumbnailPanel extends JPanel {
         });
 
         EventBus.get().register(ImageZoomChangedEvent.class, e -> refreshImageThumbnail(e.file()));
+        EventBus.get().register(ImageZoomPreviewEvent.class, e -> previewImageThumbnail(e.file(), e.zoom()));
         EventBus.get().register(MediaFileDeletedEvent.class, e -> removeThumbnailForFile(e.file()));
 
         EventBus.get().register(RotationChangedEvent.class, e -> {
@@ -268,8 +275,13 @@ public class ThumbnailPanel extends JPanel {
                 JLabel label = (JLabel) e.getSource();
                 myLabel = label;
                 File file = (File) label.getClientProperty("file");
+                thumbnailPressLabel = label;
+                thumbnailPressFile = file;
+                thumbnailPressPoint = e.getPoint();
+                thumbnailPressClickCount = e.getClickCount();
 
                 if (SwingUtilities.isRightMouseButton(e)) {
+                    clearThumbnailPress();
                     // Kontextmenü wie gehabt
                     JPopupMenu popup = new JPopupMenu();
                     JMenuItem deleteItem = new JMenuItem("Bild löschen");
@@ -293,42 +305,38 @@ public class ThumbnailPanel extends JPanel {
                     return; // Rechtsklick fertig
                 }
 
-                if (tryStartThumbnailZoomDrag(label, file, e)) {
-                    return;
-                }
+                prepareThumbnailZoomDrag(label, file, e);
 
                 if (selectedLabel != null) {
                     selectedLabel.setBorder(null);
                 }
                 selectedLabel = label;
                 selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
-
-                // Single + Double: Zähler über ClickCount
-                if (e.getClickCount() == 1) {
-                    H.out("once pressed " + file.getName());
-                    if (Controller.isImageFile(file) && MediaView.getInstance().isShowingImage(file)) {
-                        MediaView.getInstance().hideFrame();
-                        return;
-                    }
-                    AppState.get().setCurrentFile(file);
-                    Controller.getInstance().handleMedia(file, false);
-                } else if (e.getClickCount() == 2) {
-                    AppState.get().setCurrentFile(file);
-                    Controller.getInstance().handleMedia(file, true);
-                }
             }
 
             @Override
             public void mouseDragged(MouseEvent e) {
                 if (zoomDragLabel == null || zoomDragFile == null || zoomDragStartSelection == null) return;
+                if (!zoomDragStarted && zoomDragStartPoint.distance(e.getPoint()) < THUMBNAIL_PAN_START_DISTANCE) return;
+                zoomDragStarted = true;
                 updateThumbnailZoomDrag(e.getPoint(), false);
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                if (zoomDragLabel == null) return;
-                updateThumbnailZoomDrag(e.getPoint(), true);
+                if (zoomDragLabel != null && zoomDragStarted) {
+                    updateThumbnailZoomDrag(e.getPoint(), true);
+                    clearThumbnailZoomDrag();
+                    clearThumbnailPress();
+                    return;
+                }
+
                 clearThumbnailZoomDrag();
+
+                if (thumbnailPressLabel != null && thumbnailPressFile != null && isThumbnailClick(e)) {
+                    performThumbnailClick(thumbnailPressFile, thumbnailPressClickCount);
+                }
+                clearThumbnailPress();
             }
 
             @Override
@@ -341,6 +349,34 @@ public class ThumbnailPanel extends JPanel {
                 }
             }
         };
+    }
+
+    private boolean isThumbnailClick(MouseEvent e) {
+        if (!SwingUtilities.isLeftMouseButton(e) || thumbnailPressPoint == null) return false;
+        return thumbnailPressPoint.distance(e.getPoint()) < THUMBNAIL_PAN_START_DISTANCE;
+    }
+
+    private void performThumbnailClick(File file, int clickCount) {
+        if (clickCount >= 2) {
+            AppState.get().setCurrentFile(file);
+            Controller.getInstance().handleMedia(file, true);
+            return;
+        }
+
+        H.out("once pressed " + file.getName());
+        if (Controller.isImageFile(file) && MediaView.getInstance().isShowingImage(file)) {
+            MediaView.getInstance().hideFrame();
+            return;
+        }
+        AppState.get().setCurrentFile(file);
+        Controller.getInstance().handleMedia(file, false);
+    }
+
+    private void clearThumbnailPress() {
+        thumbnailPressLabel = null;
+        thumbnailPressFile = null;
+        thumbnailPressPoint = null;
+        thumbnailPressClickCount = 0;
     }
 
     private void removeThumbnail(JLabel label) {
@@ -456,6 +492,39 @@ public class ThumbnailPanel extends JPanel {
         }
     }
 
+    private void previewImageThumbnail(File file, ImageZoomHandler.ZoomSelection zoom) {
+        if (file == null || zoom == null) return;
+        if (Controller.getInstance().getControlPanel().getThumbnailZoomMode() != ThumbnailZoomMode.GRAYED_OUT) return;
+
+        for (AnimatedThumbnail thumbnail : new ArrayList<>(animatedThumbnails)) {
+            if (!file.getName().equals(thumbnail.filename)) continue;
+            JLabel label = thumbnail.label;
+            if (label == null) continue;
+
+            SwingUtilities.invokeLater(() -> {
+                Object image = label.getClientProperty(ZOOM_RENDER_IMAGE_PROPERTY);
+                Object imageSize = label.getClientProperty(ZOOM_IMAGE_SIZE_PROPERTY);
+                Object imageBounds = label.getClientProperty(ZOOM_IMAGE_BOUNDS_PROPERTY);
+                if (!(image instanceof BufferedImage baseThumbnail)
+                        || !(imageSize instanceof Dimension size)
+                        || !(imageBounds instanceof Rectangle2D bounds)) {
+                    return;
+                }
+
+                BufferedImage preview = copyImage(baseThumbnail);
+                Rectangle2D visibleRect = paintGrayedOutZoomMask(preview, size, zoom);
+                applyThumbnailRenderResult(label, new ThumbnailRenderResult(
+                        new ImageIcon(preview),
+                        visibleRect,
+                        bounds,
+                        size,
+                        baseThumbnail
+                ));
+            });
+            return;
+        }
+    }
+
     private void applyThumbnailRenderResult(JLabel label, ThumbnailRenderResult result) {
         label.setIcon(result.icon());
         label.putClientProperty(ZOOM_VISIBLE_RECT_PROPERTY, result.visibleRect());
@@ -464,17 +533,17 @@ public class ThumbnailPanel extends JPanel {
         label.putClientProperty(ZOOM_RENDER_IMAGE_PROPERTY, result.renderImage());
     }
 
-    private boolean tryStartThumbnailZoomDrag(JLabel label, File file, MouseEvent e) {
-        if (!SwingUtilities.isLeftMouseButton(e)) return false;
-        if (Controller.getInstance().getControlPanel().getThumbnailZoomMode() != ThumbnailZoomMode.GRAYED_OUT) return false;
-        if (!Controller.isImageFile(file)) return false;
+    private void prepareThumbnailZoomDrag(JLabel label, File file, MouseEvent e) {
+        if (!SwingUtilities.isLeftMouseButton(e)) return;
+        if (Controller.getInstance().getControlPanel().getThumbnailZoomMode() != ThumbnailZoomMode.GRAYED_OUT) return;
+        if (!Controller.isImageFile(file)) return;
 
         ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
-        if (zoom == null || !isPointInThumbnailZoomRect(label, e.getPoint())) return false;
+        if (zoom == null || !isPointInThumbnailZoomRect(label, e.getPoint())) return;
 
         Dimension imageSize = (Dimension) label.getClientProperty(ZOOM_IMAGE_SIZE_PROPERTY);
         Rectangle2D imageBounds = (Rectangle2D) label.getClientProperty(ZOOM_IMAGE_BOUNDS_PROPERTY);
-        if (imageSize == null || imageBounds == null) return false;
+        if (imageSize == null || imageBounds == null) return;
 
         zoomDragLabel = label;
         zoomDragFile = file;
@@ -482,9 +551,8 @@ public class ThumbnailPanel extends JPanel {
         zoomDragStartSelection = zoom;
         zoomDragImageSize = imageSize;
         zoomDragImageBounds = imageBounds;
+        zoomDragStarted = false;
         label.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
-        updateThumbnailZoomDrag(e.getPoint(), false);
-        return true;
     }
 
     private void updateThumbnailZoomDrag(Point point, boolean persist) {
@@ -553,6 +621,7 @@ public class ThumbnailPanel extends JPanel {
         zoomDragStartSelection = null;
         zoomDragImageSize = null;
         zoomDragImageBounds = null;
+        zoomDragStarted = false;
     }
 
     public void reloadDirectory() {

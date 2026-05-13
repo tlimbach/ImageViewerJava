@@ -61,6 +61,7 @@ public class ControlPanel extends JPanel {
     public ControlPanel() {
         setLayout(new BoxLayout(this, BoxLayout.Y_AXIS));
         setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        cmbThumbnailZoomMode.setSelectedItem(ThumbnailZoomMode.GRAYED_OUT);
 
         addFileChooserButton();
         addSlideshowControls();
