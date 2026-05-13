@@ -25,6 +25,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -264,6 +265,7 @@ public class ThumbnailPanel extends JPanel {
                         if (result == JOptionPane.YES_OPTION) {
                             if (file.delete()) {
                                 removeThumbnail(label);
+                                EventBus.get().publish(new MediaFileDeletedEvent(file));
                                 EventBus.get().publish(new TagsChangedEvent());
                             } else {
                                 JOptionPane.showMessageDialog(label, "Datei konnte nicht gelöscht werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
@@ -672,16 +674,20 @@ public class ThumbnailPanel extends JPanel {
 
         int copied = 0;
         List<String> failed = new ArrayList<>();
+        List<String> duplicates = new ArrayList<>();
 
         for (File source : imageFiles) {
             try {
                 Path sourcePath = source.toPath().toAbsolutePath().normalize();
-                Path targetPath = uniqueTargetPath(targetDirectory, source.getName());
+                Path duplicate = DuplicateImageFinder.findExistingDuplicate(targetDirectory, sourcePath).orElse(null);
 
-                if (sourcePath.equals(targetPath.toAbsolutePath().normalize())) {
+                if (duplicate != null) {
+                    duplicates.add(source.getName() + " ist bereits vorhanden als " + duplicate.getFileName());
+                    logDrop("Duplikat nicht kopiert: " + sourcePath + " == " + duplicate);
                     continue;
                 }
 
+                Path targetPath = uniqueTargetPath(targetDirectory, source.getName());
                 Files.copy(sourcePath, targetPath);
                 copied++;
                 logDrop("Kopiert: " + sourcePath + " -> " + targetPath);
@@ -703,23 +709,39 @@ public class ThumbnailPanel extends JPanel {
                     JOptionPane.ERROR_MESSAGE
             ));
         }
+
+        if (!duplicates.isEmpty()) {
+            showDuplicateMessage("Drag and Drop", duplicates);
+        }
     }
 
     private void downloadDroppedImage(URL url) {
         Path targetDirectory = AppState.get().getCurrentDirectory();
         if (targetDirectory == null) return;
 
+        Path tempPath = null;
         try {
             URLConnection connection = url.openConnection();
             connection.setRequestProperty("User-Agent", "Mozilla/5.0 ImageViewer");
             String contentDisposition = connection.getHeaderField("Content-Disposition");
             String contentType = connection.getContentType();
             String fileName = fileNameFromDownloadMetadata(url, contentDisposition, contentType);
-            Path targetPath = uniqueTargetPath(targetDirectory, fileName);
+            tempPath = Files.createTempFile(targetDirectory, ".download-", ".tmp");
 
             try (InputStream inputStream = connection.getInputStream()) {
-                Files.copy(inputStream, targetPath);
+                Files.copy(inputStream, tempPath, StandardCopyOption.REPLACE_EXISTING);
             }
+
+            Path duplicate = DuplicateImageFinder.findExistingDuplicate(targetDirectory, tempPath).orElse(null);
+            if (duplicate != null) {
+                Files.deleteIfExists(tempPath);
+                logDrop("URL-Bild ist Duplikat und wurde nicht gespeichert: " + url + " == " + duplicate);
+                showDuplicateMessage("Drag and Drop", List.of(fileName + " ist bereits vorhanden als " + duplicate.getFileName()));
+                return;
+            }
+
+            Path targetPath = uniqueTargetPath(targetDirectory, fileName);
+            Files.move(tempPath, targetPath);
 
             logDrop("Bild von URL gespeichert: " + url
                     + ", contentType=" + contentType
@@ -727,8 +749,24 @@ public class ThumbnailPanel extends JPanel {
                     + " -> " + targetPath);
             reloadDirectory();
         } catch (IOException e) {
+            if (tempPath != null) {
+                try {
+                    Files.deleteIfExists(tempPath);
+                } catch (IOException cleanupException) {
+                    logDrop("Temporaere Download-Datei konnte nicht geloescht werden: " + tempPath);
+                }
+            }
             showDropError("Bild von URL konnte nicht gespeichert werden.", e);
         }
+    }
+
+    private void showDuplicateMessage(String title, List<String> duplicates) {
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                this,
+                "Bereits vorhandene Bilder wurden nicht importiert:\n" + String.join("\n", duplicates),
+                title,
+                JOptionPane.INFORMATION_MESSAGE
+        ));
     }
 
     private String fileNameFromDownloadMetadata(URL url, String contentDisposition, String contentType) {

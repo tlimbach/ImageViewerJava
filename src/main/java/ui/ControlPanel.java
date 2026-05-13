@@ -5,6 +5,8 @@ import model.AppState;
 import service.*;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
@@ -177,6 +179,8 @@ public class ControlPanel extends JPanel {
             }
         });
 
+        Integer mediaLoadLimit = AppState.get().getMediaLoadLimit();
+        txtMediaLimit.setText(mediaLoadLimit == null ? "" : mediaLoadLimit.toString());
         txtMediaLimit.setToolTipText("Maximale Anzahl geladener Medien. Leer = alle.");
         txtMediaLimit.addActionListener(a -> applyMediaLimitFromField());
         txtMediaLimit.addFocusListener(new FocusAdapter() {
@@ -220,6 +224,22 @@ public class ControlPanel extends JPanel {
         txtDuration.setToolTipText("Anzeigedauer pro Bild (Sekunden)");
         txtSlideshowTotalMinutes = new JTextField(3);
         txtSlideshowTotalMinutes.setToolTipText("Gesamtdauer der Diashow (Minuten)");
+        txtSlideshowTotalMinutes.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                updateDurationFromTotalMinutes();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                updateDurationFromTotalMinutes();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                updateDurationFromTotalMinutes();
+            }
+        });
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
         JCheckBox cbxMoveImage = new JCheckBox("Move..");
@@ -241,6 +261,37 @@ public class ControlPanel extends JPanel {
 
         add(H.makeHorizontalPanel(btnStart, btnStop, cbxMoveImage));
         add(H.makeHorizontalPanel(new JLabel("Dauer"), txtDuration, new JLabel("Gesamt"), txtSlideshowTotalMinutes));
+    }
+
+    private void updateDurationFromTotalMinutes() {
+        Integer totalMinutes = parsePositiveInteger(txtSlideshowTotalMinutes.getText());
+        Integer mediaCount = getDurationCalculationMediaCount();
+        if (totalMinutes == null || mediaCount == null) {
+            return;
+        }
+
+        long totalSeconds = totalMinutes * 60L;
+        int durationSeconds = Math.max(1, (int) Math.round(totalSeconds / (double) mediaCount));
+        txtDuration.setText(Integer.toString(durationSeconds));
+    }
+
+    private Integer getDurationCalculationMediaCount() {
+        Integer mediaLimit = parsePositiveInteger(txtMediaLimit.getText());
+        if (mediaLimit != null) {
+            return mediaLimit;
+        }
+
+        int currentlyDisplayedFiles = controller.getCurrentlyDisplayedFiles().size();
+        return currentlyDisplayedFiles > 0 ? currentlyDisplayedFiles : null;
+    }
+
+    private Integer parsePositiveInteger(String value) {
+        try {
+            int parsed = Integer.parseInt(value.trim());
+            return parsed > 0 ? parsed : null;
+        } catch (NumberFormatException ex) {
+            return null;
+        }
     }
 
     private void addPlaybackControls() {

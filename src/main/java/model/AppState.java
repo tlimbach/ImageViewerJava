@@ -21,7 +21,7 @@ public class AppState {
 
    private File currentFile;
 
-   private Integer mediaLoadLimit;
+   private Integer mediaLoadLimit = 500;
 
    private boolean isIgnoreTimerange;
 

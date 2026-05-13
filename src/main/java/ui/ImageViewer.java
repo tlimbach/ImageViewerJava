@@ -1,9 +1,11 @@
 package ui;
 
 import event.CurrentDirectoryChangedEvent;
+import event.MediaFileDeletedEvent;
 import model.AppState;
 import service.AppIcon;
 import service.Controller;
+import service.DuplicateImageFinder;
 import service.EventBus;
 import service.SettingsService;
 
@@ -75,6 +77,11 @@ public class ImageViewer {
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, c->{
             frame.setTitle("Image Viewer - " + AppState.get().getCurrentDirectory());
+            lastMediaSnapshot = createMediaSnapshot();
+            directoryReloadPending = false;
+        });
+
+        EventBus.get().register(MediaFileDeletedEvent.class, e -> {
             lastMediaSnapshot = createMediaSnapshot();
             directoryReloadPending = false;
         });
@@ -196,10 +203,18 @@ public class ImageViewer {
         }
 
         int copied = 0;
+        List<String> duplicates = new ArrayList<>();
         for (Path source : new LinkedHashMap<>(pendingDesktopImports).keySet()) {
             if (!Files.isRegularFile(source) || !Controller.isImageFile(source.toFile())) continue;
 
             try {
+                Path duplicate = DuplicateImageFinder.findExistingDuplicate(targetDirectory, source).orElse(null);
+                if (duplicate != null) {
+                    duplicates.add(source.getFileName() + " ist bereits vorhanden als " + duplicate.getFileName());
+                    System.out.println("[DesktopInbox] Duplikat nicht importiert: " + source + " == " + duplicate);
+                    continue;
+                }
+
                 Path target = uniqueTargetPath(targetDirectory, source.getFileName().toString());
                 Files.copy(source, target);
                 Files.delete(source);
@@ -216,6 +231,19 @@ public class ImageViewer {
             lastMediaSnapshot = createMediaSnapshot();
             thumbnailPanel.reloadDirectory();
         }
+
+        if (!duplicates.isEmpty()) {
+            showDesktopDuplicateMessage(duplicates);
+        }
+    }
+
+    private void showDesktopDuplicateMessage(List<String> duplicates) {
+        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                null,
+                "Bereits vorhandene Bilder wurden nicht importiert:\n" + String.join("\n", duplicates),
+                "Desktop-Import",
+                JOptionPane.INFORMATION_MESSAGE
+        ));
     }
 
     private List<Path> findDesktopDirectories() {
