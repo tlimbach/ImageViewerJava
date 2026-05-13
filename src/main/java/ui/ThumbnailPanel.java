@@ -123,6 +123,7 @@ public class ThumbnailPanel extends JPanel {
         });
 
         EventBus.get().register(ImageZoomChangedEvent.class, e -> refreshImageThumbnail(e.file()));
+        EventBus.get().register(MediaFileDeletedEvent.class, e -> removeThumbnailForFile(e.file()));
 
         EventBus.get().register(RotationChangedEvent.class, e -> {
             CompletableFuture.supplyAsync(() -> {
@@ -349,6 +350,18 @@ public class ThumbnailPanel extends JPanel {
         }
 
         updateVisibleThumbnails();
+    }
+
+    private void removeThumbnailForFile(File file) {
+        if (file == null) return;
+        runOnEdt(() -> {
+            for (AnimatedThumbnail thumbnail : new ArrayList<>(animatedThumbnails)) {
+                if (file.getName().equals(thumbnail.filename)) {
+                    removeThumbnail(thumbnail.label);
+                    return;
+                }
+            }
+        });
     }
 
     private List<File> loadImageThumbnail(File imageFile) {

@@ -29,6 +29,8 @@ public class AnimatedImagePanel extends JPanel {
     private static final int MENU_WIDTH = 96;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
+    private static final int MENU_GAP = 8;
+    private static final int DELETE_BUTTON_SIZE = 34;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
 
@@ -43,6 +45,8 @@ public class AnimatedImagePanel extends JPanel {
     private final Runnable onInteractionStarted;
     private final Runnable onInteractionFinished;
     private final JButton resetButton = new JButton("Reset");
+    private final JButton deleteButton = new JButton("🗑");
+    private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
     private ImageZoomHandler.ZoomSelection zoomSelection;
 
@@ -109,6 +113,10 @@ public class AnimatedImagePanel extends JPanel {
             repaint();
             finishInteraction();
         });
+        deleteButton.setFocusable(false);
+        deleteButton.setVisible(false);
+        deleteButton.setToolTipText("Bild löschen");
+        deleteButton.addActionListener(e -> deleteCurrentImage());
         MouseAdapter buttonMouseHandler = new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
@@ -122,13 +130,22 @@ public class AnimatedImagePanel extends JPanel {
         };
         resetButton.addMouseListener(buttonMouseHandler);
         resetButton.addMouseMotionListener(buttonMouseHandler);
+        deleteButton.addMouseListener(buttonMouseHandler);
+        deleteButton.addMouseMotionListener(buttonMouseHandler);
         add(resetButton);
+        add(deleteButton);
+        add(deleteConfirmationOverlay);
+        setComponentZOrder(deleteConfirmationOverlay, 0);
     }
 
     private void installMouseSelection() {
         MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
+                if (SwingUtilities.isRightMouseButton(e)) {
+                    showDeletePopup(e);
+                    return;
+                }
                 if (file == null || !SwingUtilities.isLeftMouseButton(e)) return;
                 beginInteraction();
                 showOverlayTemporarily();
@@ -179,6 +196,30 @@ public class AnimatedImagePanel extends JPanel {
         addMouseMotionListener(mouseHandler);
     }
 
+    private void deleteCurrentImage() {
+        if (file == null) return;
+        beginInteraction();
+        deleteConfirmationOverlay.showForFile(file.getName(), () -> {
+            if (!MediaDeleteSupport.deleteFile(file)) {
+                deleteConfirmationOverlay.showError();
+                return;
+            }
+            deleteConfirmationOverlay.setVisible(false);
+            finishInteraction();
+        }, this::finishInteraction);
+        setOverlayVisible(false);
+        repaint();
+    }
+
+    private void showDeletePopup(MouseEvent e) {
+        if (file == null) return;
+        JPopupMenu popup = new JPopupMenu();
+        JMenuItem deleteItem = new JMenuItem("Bild löschen");
+        deleteItem.addActionListener(a -> deleteCurrentImage());
+        popup.add(deleteItem);
+        popup.show(e.getComponent(), e.getX(), e.getY());
+    }
+
     private void beginInteraction() {
         if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
             animationTimer.stop();
@@ -216,6 +257,7 @@ public class AnimatedImagePanel extends JPanel {
         boolean hasZoom = zoomSelection != null;
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
+        deleteButton.setVisible(visible && file != null);
         repaint();
     }
 
@@ -360,10 +402,13 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!resetButton.isVisible()) return;
+        if (!resetButton.isVisible() && !deleteButton.isVisible()) return;
+        int x = resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
+        int y = resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
+        int right = Math.max(resetButton.getX() + resetButton.getWidth(), deleteButton.getX() + deleteButton.getWidth());
+        int bottom = Math.max(resetButton.getY() + resetButton.getHeight(), deleteButton.getY() + deleteButton.getHeight());
         g2.setColor(new Color(0, 0, 0, 120));
-        g2.fillRoundRect(resetButton.getX() - 6, resetButton.getY() - 6,
-                resetButton.getWidth() + 12, resetButton.getHeight() + 12, 8, 8);
+        g2.fillRoundRect(x - 6, y - 6, right - x + 12, bottom - y + 12, 8, 8);
     }
 
     private void paintZoomMarker(Graphics2D g2) {
@@ -428,10 +473,24 @@ public class AnimatedImagePanel extends JPanel {
     public void doLayout() {
         super.doLayout();
         resetButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - MENU_WIDTH - MENU_MARGIN),
+                Math.max(MENU_MARGIN, getWidth() - MENU_WIDTH - DELETE_BUTTON_SIZE - MENU_GAP - MENU_MARGIN),
                 MENU_MARGIN,
                 MENU_WIDTH,
                 MENU_HEIGHT
+        );
+        deleteButton.setBounds(
+                Math.max(MENU_MARGIN, getWidth() - DELETE_BUTTON_SIZE - MENU_MARGIN),
+                MENU_MARGIN,
+                DELETE_BUTTON_SIZE,
+                MENU_HEIGHT
+        );
+        int confirmWidth = Math.min(360, Math.max(260, getWidth() - 80));
+        int confirmHeight = 118;
+        deleteConfirmationOverlay.setBounds(
+                Math.max(20, (getWidth() - confirmWidth) / 2),
+                Math.max(20, (getHeight() - confirmHeight) / 2),
+                confirmWidth,
+                confirmHeight
         );
     }
 
