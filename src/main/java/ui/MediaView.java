@@ -199,6 +199,12 @@ public class MediaView {
                 SwingUtilities.invokeLater(() -> imagePanel.setPreviewZoom(e.file(), e.zoom()));
             }
         });
+
+        EventBus.get().register(ImageZoomChangedEvent.class, e -> {
+            if (currentFile != null && currentFile.equals(e.file()) && Controller.isImageFile(currentFile)) {
+                SwingUtilities.invokeLater(() -> imagePanel.clearPreviewZoom(e.file()));
+            }
+        });
     }
 
     private void initPlayerListener() {

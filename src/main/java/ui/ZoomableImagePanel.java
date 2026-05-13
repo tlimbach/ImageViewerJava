@@ -139,7 +139,14 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
     }
 
+    public void clearPreviewZoom(File file) {
+        if (this.file == null || file == null || !this.file.equals(file)) return;
+        this.previewZoom = null;
+        repaint();
+    }
+
     private void resetZoom() {
+        previewZoom = null;
         ImageZoomHandler.getInstance().resetZoomForFile(file);
         setOverlayVisible(false);
         repaint();

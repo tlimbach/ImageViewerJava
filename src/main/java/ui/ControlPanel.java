@@ -40,6 +40,7 @@ public class ControlPanel extends JPanel {
     private final SlideshowManager slideshowManager = new SlideshowManager();
 
     private JLabel txtUntaggedCount;
+    private JLabel txtUnzoomedCount;
 
     private JSlider sldVolume;
     private JLabel lblVol;
@@ -87,6 +88,7 @@ public class ControlPanel extends JPanel {
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
             updateUntaggedFilesCount();
+            updateUnzoomedFilesCount();
             tagSelectionPanel.reloadTags();
         });
 
@@ -94,6 +96,8 @@ public class ControlPanel extends JPanel {
             updateUntaggedFilesCount();
             tagSelectionPanel.reloadTags();
         });
+
+        EventBus.get().register(ImageZoomChangedEvent.class, e -> updateUnzoomedFilesCount());
 
         EventBus.get().register(UserKeyboardEvent.class, e -> {
             // Hier: PAGE_UP und PAGE_DOWN (und weitere) verarbeiten
@@ -119,6 +123,7 @@ public class ControlPanel extends JPanel {
         });
 
         updateUntaggedFilesCount();
+        updateUnzoomedFilesCount();
 
     }
 
@@ -445,6 +450,13 @@ public class ControlPanel extends JPanel {
         });
 
         add(H.makeHorizontalPanel(btnShowUntagged, txtUntaggedCount));
+        JButton btnShowUnzoomed = new JButton("Unzoomed anzeigen");
+        btnShowUnzoomed.addActionListener(a -> {
+            List<File> files = ImageZoomHandler.getInstance().getUnzoomedImageFiles();
+            Controller.getInstance().setSelectedFiles(files.stream().map(File::getAbsolutePath).toList());
+        });
+        txtUnzoomedCount = new JLabel("(0)");
+        add(H.makeHorizontalPanel(btnShowUnzoomed, txtUnzoomedCount));
         add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
         tagSelectionPanel = new TagSelectionPanel();
         add(tagSelectionPanel);
@@ -560,6 +572,12 @@ public class ControlPanel extends JPanel {
     private void updateUntaggedFilesCount() {
         List<File> untagged = TagHandler.getInstance().getUntaggedFiles();
         txtUntaggedCount.setText("(" + untagged.size() + ")");
+    }
+
+    private void updateUnzoomedFilesCount() {
+        if (txtUnzoomedCount == null) return;
+        List<File> unzoomed = ImageZoomHandler.getInstance().getUnzoomedImageFiles();
+        txtUnzoomedCount.setText("(" + unzoomed.size() + ")");
     }
 
 

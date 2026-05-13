@@ -2,9 +2,14 @@ package service;
 
 import event.CurrentDirectoryChangedEvent;
 import event.ImageZoomChangedEvent;
+import model.AppState;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 public class ImageZoomHandler extends JsonSettingsStore {
 
@@ -51,6 +56,22 @@ public class ImageZoomHandler extends JsonSettingsStore {
         data.remove(file.getName());
         save();
         EventBus.get().publish(new ImageZoomChangedEvent(file));
+    }
+
+    public List<File> getUnzoomedImageFiles() {
+        Path currentDir = AppState.get().getCurrentDirectory();
+        if (currentDir == null) return Collections.emptyList();
+
+        File[] files = currentDir.toFile().listFiles(File::isFile);
+        if (files == null) return Collections.emptyList();
+
+        List<File> unzoomed = new ArrayList<>();
+        for (File file : files) {
+            if (Controller.isImageFile(file) && getZoomForFile(file) == null) {
+                unzoomed.add(file);
+            }
+        }
+        return unzoomed;
     }
 
     @Override
