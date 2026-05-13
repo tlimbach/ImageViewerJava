@@ -19,6 +19,9 @@ public class SlideshowManager {
     private int currentIndex;
     private boolean running;
     private final MediaView mediaView = MediaView.getInstance();
+    private long heldImageRemainingMillis;
+    private long interactionHoldStarted;
+    private boolean interactionHold;
 
     private final Timer repeatCheckTimer = new Timer(500, e -> checkRepeatVideo());
     private boolean moveImages;
@@ -34,6 +37,9 @@ public class SlideshowManager {
         this.totalEndTime = System.currentTimeMillis() + totalDurationMinutes * 60_000L;
         this.currentIndex = 0;
         this.running = true;
+        this.interactionHold = false;
+        this.heldImageRemainingMillis = 0;
+        this.interactionHoldStarted = 0;
 
         mediaView.startSlideshowProgress(totalDurationMinutes * 60_000L);
         showCurrent();
@@ -61,19 +67,19 @@ public class SlideshowManager {
 
         if (Controller.isImageFile(file)) {
             mediaView.display(file, false);
-            scheduleNext();
+            scheduleNext(durationSeconds * 1000L);
         } else if (Controller.isVideoFile(file)) {
             mediaView.display(file, true);
             mediaView.getLeftBar().start(durationSeconds * 1000L);
         }
     }
 
-    private void scheduleNext() {
+    private void scheduleNext(long delayMillis) {
         if (slideshowTimer != null) {
             slideshowTimer.stop();
         }
 
-        slideshowTimer = new Timer(durationSeconds * 1000, e -> {
+        slideshowTimer = new Timer((int) Math.max(1, delayMillis), e -> {
             if (isTotalDurationReached()) {
                 stop();
                 return;
@@ -104,6 +110,7 @@ public class SlideshowManager {
 
     public void stop() {
         running = false;
+        interactionHold = false;
         stopTimersOnly();
         mediaView.stop();
         mediaView.getLeftBar().stop();
@@ -121,6 +128,35 @@ public class SlideshowManager {
 
     public boolean isRunning() {
         return running;
+    }
+
+    public void holdImageForInteraction() {
+        if (!running || interactionHold || files == null || currentIndex >= files.size()) return;
+        File current = files.get(currentIndex);
+        if (!Controller.isImageFile(current)) return;
+
+        interactionHold = true;
+        interactionHoldStarted = System.currentTimeMillis();
+        heldImageRemainingMillis = Math.max(1000, endTime - interactionHoldStarted);
+
+        if (slideshowTimer != null) {
+            slideshowTimer.stop();
+        }
+        mediaView.getLeftBar().stop();
+        mediaView.stopSlideshowProgress();
+    }
+
+    public void resumeAfterInteraction() {
+        if (!running || !interactionHold) return;
+
+        long now = System.currentTimeMillis();
+        totalEndTime += Math.max(0, now - interactionHoldStarted);
+        endTime = now + heldImageRemainingMillis;
+        interactionHold = false;
+
+        mediaView.getLeftBar().start(heldImageRemainingMillis);
+        mediaView.startSlideshowProgress(Math.max(1000, totalEndTime - now));
+        scheduleNext(heldImageRemainingMillis);
     }
 
     public long getDurationMillis() {

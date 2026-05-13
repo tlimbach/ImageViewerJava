@@ -17,6 +17,7 @@ public class ZoomableImagePanel extends JPanel {
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MIN_SELECTION_SIZE = 8;
+    private static final int ZOOM_MARKER_SIZE = 18;
 
     private final JButton resetButton = new JButton("Reset");
     private final Timer overlayHideTimer;
@@ -208,6 +209,8 @@ public class ZoomableImagePanel extends JPanel {
             paintSelection(g2);
         }
 
+        paintZoomMarker(g2);
+
         if (overlayVisible) {
             paintOverlayBackground(g2);
         }
@@ -232,6 +235,20 @@ public class ZoomableImagePanel extends JPanel {
         g2.setColor(new Color(0, 0, 0, 120));
         g2.fillRoundRect(resetButton.getX() - 6, resetButton.getY() - 6,
                 resetButton.getWidth() + 12, resetButton.getHeight() + 12, 8, 8);
+    }
+
+    private void paintZoomMarker(Graphics2D g2) {
+        if (file == null || ImageZoomHandler.getInstance().getZoomForFile(file) == null) return;
+
+        int w = getWidth();
+        int h = getHeight();
+        Polygon marker = new Polygon(
+                new int[]{w, w, w - ZOOM_MARKER_SIZE},
+                new int[]{h, h - ZOOM_MARKER_SIZE, h},
+                3
+        );
+        g2.setColor(new Color(255, 221, 0, 230));
+        g2.fillPolygon(marker);
     }
 
     private Rectangle2D getRenderedImageBounds() {

@@ -5,8 +5,12 @@ import service.ImageZoomHandler;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
+import java.io.File;
 
 public class AnimatedImagePanel extends JPanel {
     // ------------------ STELLSCHRAUBEN ------------------
@@ -22,6 +26,11 @@ public class AnimatedImagePanel extends JPanel {
     private static final double ZOOM_SPEED = 0.003;
     private static final double PAN_SPEED_X = 0.005;
     private static final double PAN_SPEED_Y = 0.005;
+    private static final int MENU_WIDTH = 96;
+    private static final int MENU_HEIGHT = 34;
+    private static final int MENU_MARGIN = 16;
+    private static final int MIN_SELECTION_SIZE = 8;
+    private static final int ZOOM_MARKER_SIZE = 18;
 
     private static double initialZoom = 0;
 
@@ -30,26 +39,52 @@ public class AnimatedImagePanel extends JPanel {
     private final Timer animationTimer;
     private final int baseWidth;
     private final int baseHeight;
-    private final ImageZoomHandler.ZoomSelection zoomSelection;
+    private final File file;
+    private final Runnable onInteractionStarted;
+    private final Runnable onInteractionFinished;
+    private final JButton resetButton = new JButton("Reset");
+    private final Timer overlayHideTimer;
+    private ImageZoomHandler.ZoomSelection zoomSelection;
 
     private double zoomPhase = 0;
     private double panPhaseX = 0;
     private double panPhaseY = 1.7;
 
     private double alteZoom = 0;
+    private Point dragStart;
+    private Rectangle selection;
+    private Rectangle2D renderedImageBounds;
+    private boolean overlayVisible;
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
-        this(image, newWidth, newHeight, null);
+        this(image, newWidth, newHeight, null, null, null, null);
     }
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight, ImageZoomHandler.ZoomSelection zoomSelection) {
+        this(image, newWidth, newHeight, null, zoomSelection, null, null);
+    }
+
+    public AnimatedImagePanel(Image image, int newWidth, int newHeight, File file,
+                              ImageZoomHandler.ZoomSelection zoomSelection,
+                              Runnable onInteractionStarted,
+                              Runnable onInteractionFinished) {
         initialZoom = 0;
         this.image = toBufferedImage(image);
         this.baseWidth = newWidth;
         this.baseHeight = newHeight;
+        this.file = file;
         this.zoomSelection = zoomSelection;
+        this.onInteractionStarted = onInteractionStarted;
+        this.onInteractionFinished = onInteractionFinished;
 
+        setLayout(null);
+        setBackground(Color.BLACK);
+        setOpaque(true);
         setDoubleBuffered(true);
+        installResetButton();
+        installMouseSelection();
+        overlayHideTimer = new Timer(1000, e -> setOverlayVisible(false));
+        overlayHideTimer.setRepeats(false);
 
         animationTimer = new Timer(15, e -> {
             zoomPhase += ZOOM_SPEED;
@@ -63,6 +98,105 @@ public class AnimatedImagePanel extends JPanel {
         }
     }
 
+    private void installResetButton() {
+        resetButton.setFocusable(false);
+        resetButton.setVisible(false);
+        resetButton.addActionListener(e -> {
+            beginInteraction();
+            ImageZoomHandler.getInstance().resetZoomForFile(file);
+            zoomSelection = null;
+            setOverlayVisible(false);
+            repaint();
+            finishInteraction();
+        });
+        MouseAdapter buttonMouseHandler = new MouseAdapter() {
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                showOverlayTemporarily();
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                showOverlayTemporarily();
+            }
+        };
+        resetButton.addMouseListener(buttonMouseHandler);
+        resetButton.addMouseMotionListener(buttonMouseHandler);
+        add(resetButton);
+    }
+
+    private void installMouseSelection() {
+        MouseAdapter mouseHandler = new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (file == null || !SwingUtilities.isLeftMouseButton(e)) return;
+                beginInteraction();
+                showOverlayTemporarily();
+                dragStart = e.getPoint();
+                selection = new Rectangle(dragStart);
+                repaint();
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (dragStart == null) return;
+                showOverlayTemporarily();
+                selection = createRectangle(dragStart, e.getPoint());
+                repaint();
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (dragStart == null) return;
+                showOverlayTemporarily();
+                selection = createRectangle(dragStart, e.getPoint());
+                applySelection();
+                dragStart = null;
+                selection = null;
+                repaint();
+                finishInteraction();
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                showOverlayTemporarily();
+            }
+
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                showOverlayTemporarily();
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                if (!contains(e.getPoint())) {
+                    setOverlayVisible(false);
+                }
+            }
+        };
+
+        addMouseListener(mouseHandler);
+        addMouseMotionListener(mouseHandler);
+    }
+
+    private void beginInteraction() {
+        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
+            animationTimer.stop();
+        }
+        if (onInteractionStarted != null) {
+            onInteractionStarted.run();
+        }
+    }
+
+    private void finishInteraction() {
+        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
+            animationTimer.start();
+        }
+        if (onInteractionFinished != null) {
+            onInteractionFinished.run();
+        }
+    }
+
     private BufferedImage toBufferedImage(Image img) {
         BufferedImage buffered = new BufferedImage(
                 img.getWidth(null), img.getHeight(null), BufferedImage.TYPE_INT_ARGB);
@@ -70,6 +204,63 @@ public class AnimatedImagePanel extends JPanel {
         g2.drawImage(img, 0, 0, null);
         g2.dispose();
         return buffered;
+    }
+
+    private void showOverlayTemporarily() {
+        setOverlayVisible(file != null);
+        overlayHideTimer.restart();
+    }
+
+    private void setOverlayVisible(boolean visible) {
+        overlayVisible = visible;
+        boolean hasZoom = zoomSelection != null;
+        resetButton.setVisible(visible && file != null);
+        resetButton.setEnabled(hasZoom);
+        repaint();
+    }
+
+    private Rectangle createRectangle(Point a, Point b) {
+        int x = Math.min(a.x, b.x);
+        int y = Math.min(a.y, b.y);
+        int width = Math.abs(a.x - b.x);
+        int height = Math.abs(a.y - b.y);
+        return new Rectangle(x, y, width, height);
+    }
+
+    private void applySelection() {
+        if (file == null || selection == null) return;
+        if (selection.width < MIN_SELECTION_SIZE || selection.height < MIN_SELECTION_SIZE) return;
+
+        Rectangle2D imageBounds = renderedImageBounds != null
+                ? renderedImageBounds
+                : getRenderedImageBounds(getWidth(), getHeight());
+        if (imageBounds.getWidth() <= 0 || imageBounds.getHeight() <= 0) return;
+
+        Rectangle selectedImageRect = toImageRectangle(selection, imageBounds);
+        if (selectedImageRect.width <= 0 || selectedImageRect.height <= 0) return;
+
+        zoomSelection = new ImageZoomHandler.ZoomSelection(
+                selectedImageRect.getX() / image.getWidth(),
+                selectedImageRect.getY() / image.getHeight(),
+                selectedImageRect.getWidth() / image.getWidth(),
+                selectedImageRect.getHeight() / image.getHeight()
+        );
+        ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
+        setOverlayVisible(true);
+    }
+
+    private Rectangle toImageRectangle(Rectangle panelRect, Rectangle2D imageBounds) {
+        double scaleX = image.getWidth() / imageBounds.getWidth();
+        double scaleY = image.getHeight() / imageBounds.getHeight();
+
+        int x1 = clamp((int) Math.floor((panelRect.x - imageBounds.getX()) * scaleX), 0, image.getWidth());
+        int y1 = clamp((int) Math.floor((panelRect.y - imageBounds.getY()) * scaleY), 0, image.getHeight());
+        int x2 = clamp((int) Math.ceil((panelRect.x + panelRect.width - imageBounds.getX()) * scaleX), 0, image.getWidth());
+        int y2 = clamp((int) Math.ceil((panelRect.y + panelRect.height - imageBounds.getY()) * scaleY), 0, image.getHeight());
+
+        int x = Math.min(x1, x2);
+        int y = Math.min(y1, y2);
+        return new Rectangle(x, y, Math.abs(x2 - x1), Math.abs(y2 - y1));
     }
 
     @Override
@@ -128,8 +319,65 @@ public class AnimatedImagePanel extends JPanel {
 
         int x = clamp(baseX + dx, targetWidth - iw, 0);
         int y = clamp(baseY + dy, targetHeight - ih, 0);
+        renderedImageBounds = new Rectangle2D.Double(x, y, iw, ih);
 
         g2.drawImage(image, x, y, iw, ih, null);
+
+        if (selection != null && selection.width > 0 && selection.height > 0) {
+            paintSelection(g2);
+        }
+
+        paintZoomMarker(g2);
+
+        if (overlayVisible) {
+            paintOverlayBackground(g2);
+        }
+    }
+
+    private Rectangle2D getRenderedImageBounds(int targetWidth, int targetHeight) {
+        Rectangle2D viewRect = getBaseViewRect(targetWidth, targetHeight);
+        double zoom = Math.max(
+                targetWidth / viewRect.getWidth(),
+                targetHeight / viewRect.getHeight()
+        ) * BASE_SCALE_MULTIPLIER;
+
+        double width = image.getWidth() * zoom;
+        double height = image.getHeight() * zoom;
+        double x = -viewRect.getX() * zoom;
+        double y = -viewRect.getY() * zoom;
+        return new Rectangle2D.Double(x, y, width, height);
+    }
+
+    private void paintSelection(Graphics2D g2) {
+        Area outer = new Area(new Rectangle(0, 0, getWidth(), getHeight()));
+        outer.subtract(new Area(selection));
+        g2.setColor(new Color(0, 0, 0, 90));
+        g2.fill(outer);
+
+        g2.setColor(Color.WHITE);
+        g2.setStroke(new BasicStroke(2f));
+        g2.draw(selection);
+    }
+
+    private void paintOverlayBackground(Graphics2D g2) {
+        if (!resetButton.isVisible()) return;
+        g2.setColor(new Color(0, 0, 0, 120));
+        g2.fillRoundRect(resetButton.getX() - 6, resetButton.getY() - 6,
+                resetButton.getWidth() + 12, resetButton.getHeight() + 12, 8, 8);
+    }
+
+    private void paintZoomMarker(Graphics2D g2) {
+        if (zoomSelection == null) return;
+
+        int w = getWidth();
+        int h = getHeight();
+        Polygon marker = new Polygon(
+                new int[]{w, w, w - ZOOM_MARKER_SIZE},
+                new int[]{h, h - ZOOM_MARKER_SIZE, h},
+                3
+        );
+        g2.setColor(new Color(255, 221, 0, 230));
+        g2.fillPolygon(marker);
     }
 
     private Rectangle2D getBaseViewRect(int targetWidth, int targetHeight) {
@@ -176,6 +424,16 @@ public class AnimatedImagePanel extends JPanel {
         return Math.max(min, Math.min(max, value));
     }
 
+    @Override
+    public void doLayout() {
+        super.doLayout();
+        resetButton.setBounds(
+                Math.max(MENU_MARGIN, getWidth() - MENU_WIDTH - MENU_MARGIN),
+                MENU_MARGIN,
+                MENU_WIDTH,
+                MENU_HEIGHT
+        );
+    }
 
     @Override
     public void addNotify() {

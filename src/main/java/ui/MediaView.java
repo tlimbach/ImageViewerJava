@@ -39,6 +39,12 @@ public class MediaView {
     private final SlideshowProgressOverlay slideshowProgressOverlay = new SlideshowProgressOverlay();
     private final SlideshowCountdownOverlay slideshowCountdownOverlay = new SlideshowCountdownOverlay();
     private boolean videoOverlayActive;
+    private double wheelNavigationAccumulator;
+    private long lastWheelNavigationTime;
+    private int lastWheelDirection;
+
+    private static final double WHEEL_NAVIGATION_THRESHOLD = 3.0;
+    private static final long WHEEL_NAVIGATION_COOLDOWN_MS = 350;
 
     public static MediaView getInstance() {
         return instance;
@@ -352,7 +358,10 @@ public class MediaView {
                     rotatedImage,
                     newWidth,
                     newHeight,
-                    ImageZoomHandler.getInstance().getZoomForFile(file)
+                    file,
+                    ImageZoomHandler.getInstance().getZoomForFile(file),
+                    Controller.getInstance().getControlPanel().getSlideshowManager()::holdImageForInteraction,
+                    Controller.getInstance().getControlPanel().getSlideshowManager()::resumeAfterInteraction
             );
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
@@ -604,13 +613,34 @@ public class MediaView {
             Rectangle frameBounds = frame.getBounds();
             if (!frameBounds.contains(mouseLocation)) return;
 
-            int rotation = wheelEvent.getWheelRotation();
-            if (rotation > 0) {
+            int direction = Integer.compare(wheelEvent.getWheelRotation(), 0);
+            if (direction == 0) return;
+
+            long now = System.currentTimeMillis();
+            if (now - lastWheelNavigationTime < WHEEL_NAVIGATION_COOLDOWN_MS) {
+                wheelEvent.consume();
+                return;
+            }
+
+            if (direction != lastWheelDirection) {
+                wheelNavigationAccumulator = 0;
+                lastWheelDirection = direction;
+            }
+
+            wheelNavigationAccumulator += Math.abs(wheelEvent.getPreciseWheelRotation());
+            wheelEvent.consume();
+
+            if (wheelNavigationAccumulator < WHEEL_NAVIGATION_THRESHOLD) {
+                return;
+            }
+
+            wheelNavigationAccumulator = 0;
+            lastWheelNavigationTime = now;
+
+            if (direction > 0) {
                 EventBus.get().publish(new UserKeyboardEvent(UserCommand.RIGHT));
-                wheelEvent.consume();
-            } else if (rotation < 0) {
+            } else {
                 EventBus.get().publish(new UserKeyboardEvent(UserCommand.LEFT));
-                wheelEvent.consume();
             }
         }, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
     }
