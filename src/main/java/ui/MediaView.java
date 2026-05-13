@@ -31,7 +31,7 @@ public class MediaView {
     private final JFrame frame;
     private final CardLayout cardLayout;
     private final JPanel stackPanel;
-    private final JLabel imageLabel;
+    private final ZoomableImagePanel imagePanel;
     private final CallbackMediaPlayerComponent mediaPlayerComponent;
 
     private final LeftBar leftBar = new LeftBar();
@@ -100,10 +100,8 @@ public class MediaView {
         cardLayout = new CardLayout();
         stackPanel = new JPanel(cardLayout);
 
-        imageLabel = new JLabel("", SwingConstants.CENTER);
-        imageLabel.setBackground(Color.BLACK);
-        imageLabel.setOpaque(true);
-        stackPanel.add(imageLabel, "image");
+        imagePanel = new ZoomableImagePanel();
+        stackPanel.add(imagePanel, "image");
 
         mediaPlayerComponent = new CallbackMediaPlayerComponent();
         mediaPlayerComponent.videoSurfaceComponent().addMouseListener(new java.awt.event.MouseAdapter() {
@@ -354,8 +352,7 @@ public class MediaView {
             stackPanel.add(animatedPanel, "animated");
             cardLayout.show(stackPanel, "animated");
         } else {
-            BufferedImage highQuality = getHighQualityCoverImage(rotatedImage, maxWidth, maxHeight);
-            imageLabel.setIcon(new ImageIcon(highQuality));
+            imagePanel.setImage(file, rotatedImage);
             cardLayout.show(stackPanel, "image");
         }
 
@@ -613,25 +610,4 @@ public class MediaView {
         }, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
     }
 
-    private BufferedImage getHighQualityCoverImage(BufferedImage src, int targetWidth, int targetHeight) {
-        BufferedImage resized = new BufferedImage(targetWidth, targetHeight, BufferedImage.TYPE_INT_RGB);
-        Graphics2D g2d = resized.createGraphics();
-        g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        g2d.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-        g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-        double scale = Math.max(
-                (double) targetWidth / src.getWidth(),
-                (double) targetHeight / src.getHeight()
-        );
-        int scaledWidth = (int) Math.round(src.getWidth() * scale);
-        int scaledHeight = (int) Math.round(src.getHeight() * scale);
-        int x = (targetWidth - scaledWidth) / 2;
-        int overflowY = Math.max(0, scaledHeight - targetHeight);
-        int y = -(overflowY / 3);
-
-        g2d.drawImage(src, x, y, scaledWidth, scaledHeight, null);
-        g2d.dispose();
-        return resized;
-    }
 }
