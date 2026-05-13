@@ -65,7 +65,17 @@ public class ThumbnailPanel extends JPanel {
     private final Timer thumbnailUiRefreshTimer = new Timer(80, e -> flushThumbnailUiRefresh());
     private final TransferHandler fileDropTransferHandler = createFileDropTransferHandler();
     private static final Pattern HTML_IMAGE_SRC_PATTERN = Pattern.compile("<img[^>]+src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
+    private static final String ZOOM_VISIBLE_RECT_PROPERTY = "zoomVisibleRect";
+    private static final String ZOOM_IMAGE_BOUNDS_PROPERTY = "zoomImageBounds";
+    private static final String ZOOM_IMAGE_SIZE_PROPERTY = "zoomImageSize";
+    private static final String ZOOM_RENDER_IMAGE_PROPERTY = "zoomRenderImage";
 
+    private JLabel zoomDragLabel;
+    private File zoomDragFile;
+    private Point zoomDragStartPoint;
+    private ImageZoomHandler.ZoomSelection zoomDragStartSelection;
+    private Dimension zoomDragImageSize;
+    private Rectangle2D zoomDragImageBounds;
 
     public ThumbnailPanel() {
 
@@ -283,6 +293,10 @@ public class ThumbnailPanel extends JPanel {
                     return; // Rechtsklick fertig
                 }
 
+                if (tryStartThumbnailZoomDrag(label, file, e)) {
+                    return;
+                }
+
                 if (selectedLabel != null) {
                     selectedLabel.setBorder(null);
                 }
@@ -301,6 +315,29 @@ public class ThumbnailPanel extends JPanel {
                 } else if (e.getClickCount() == 2) {
                     AppState.get().setCurrentFile(file);
                     Controller.getInstance().handleMedia(file, true);
+                }
+            }
+
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (zoomDragLabel == null || zoomDragFile == null || zoomDragStartSelection == null) return;
+                updateThumbnailZoomDrag(e.getPoint(), false);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (zoomDragLabel == null) return;
+                updateThumbnailZoomDrag(e.getPoint(), true);
+                clearThumbnailZoomDrag();
+            }
+
+            @Override
+            public void mouseMoved(MouseEvent e) {
+                JLabel label = (JLabel) e.getSource();
+                if (isPointInThumbnailZoomRect(label, e.getPoint())) {
+                    label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+                } else {
+                    label.setCursor(Cursor.getDefaultCursor());
                 }
             }
         };
@@ -408,15 +445,114 @@ public class ThumbnailPanel extends JPanel {
 
             CompletableFuture
                     .supplyAsync(() -> createImageThumbnailIcon(file), Controller.getInstance().getExecutorService())
-                    .thenAccept(icon -> {
-                        if (icon == null) return;
+                    .thenAccept(result -> {
+                        if (result == null) return;
                         SwingUtilities.invokeLater(() -> {
                             if (animatedThumbnails.contains(thumbnail)) {
-                                label.setIcon(icon);
+                                applyThumbnailRenderResult(label, result);
                             }
                         });
                     });
         }
+    }
+
+    private void applyThumbnailRenderResult(JLabel label, ThumbnailRenderResult result) {
+        label.setIcon(result.icon());
+        label.putClientProperty(ZOOM_VISIBLE_RECT_PROPERTY, result.visibleRect());
+        label.putClientProperty(ZOOM_IMAGE_BOUNDS_PROPERTY, result.imageBounds());
+        label.putClientProperty(ZOOM_IMAGE_SIZE_PROPERTY, result.imageSize());
+        label.putClientProperty(ZOOM_RENDER_IMAGE_PROPERTY, result.renderImage());
+    }
+
+    private boolean tryStartThumbnailZoomDrag(JLabel label, File file, MouseEvent e) {
+        if (!SwingUtilities.isLeftMouseButton(e)) return false;
+        if (Controller.getInstance().getControlPanel().getThumbnailZoomMode() != ThumbnailZoomMode.GRAYED_OUT) return false;
+        if (!Controller.isImageFile(file)) return false;
+
+        ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
+        if (zoom == null || !isPointInThumbnailZoomRect(label, e.getPoint())) return false;
+
+        Dimension imageSize = (Dimension) label.getClientProperty(ZOOM_IMAGE_SIZE_PROPERTY);
+        Rectangle2D imageBounds = (Rectangle2D) label.getClientProperty(ZOOM_IMAGE_BOUNDS_PROPERTY);
+        if (imageSize == null || imageBounds == null) return false;
+
+        zoomDragLabel = label;
+        zoomDragFile = file;
+        zoomDragStartPoint = e.getPoint();
+        zoomDragStartSelection = zoom;
+        zoomDragImageSize = imageSize;
+        zoomDragImageBounds = imageBounds;
+        label.setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+        updateThumbnailZoomDrag(e.getPoint(), false);
+        return true;
+    }
+
+    private void updateThumbnailZoomDrag(Point point, boolean persist) {
+        if (zoomDragImageSize == null || zoomDragImageBounds == null || zoomDragStartPoint == null) return;
+
+        double dxImage = (point.x - zoomDragStartPoint.x) * zoomDragImageSize.getWidth() / zoomDragImageBounds.getWidth();
+        double dyImage = (point.y - zoomDragStartPoint.y) * zoomDragImageSize.getHeight() / zoomDragImageBounds.getHeight();
+
+        double newX = clamp(
+                zoomDragStartSelection.x() + dxImage / zoomDragImageSize.getWidth(),
+                0,
+                1 - zoomDragStartSelection.width()
+        );
+        double newY = clamp(
+                zoomDragStartSelection.y() + dyImage / zoomDragImageSize.getHeight(),
+                0,
+                1 - zoomDragStartSelection.height()
+        );
+
+        ImageZoomHandler.ZoomSelection updated = new ImageZoomHandler.ZoomSelection(
+                newX,
+                newY,
+                zoomDragStartSelection.width(),
+                zoomDragStartSelection.height()
+        );
+
+        previewThumbnailZoom(updated);
+        EventBus.get().publish(new ImageZoomPreviewEvent(zoomDragFile, updated));
+
+        if (persist) {
+            ImageZoomHandler.getInstance().setZoomForFile(zoomDragFile, updated);
+        }
+    }
+
+    private void previewThumbnailZoom(ImageZoomHandler.ZoomSelection zoom) {
+        if (zoomDragLabel == null) return;
+        Object image = zoomDragLabel.getClientProperty(ZOOM_RENDER_IMAGE_PROPERTY);
+        if (!(image instanceof BufferedImage baseThumbnail)) return;
+
+        BufferedImage preview = copyImage(baseThumbnail);
+        paintGrayedOutZoomMask(preview, zoomDragImageSize, zoom);
+        Rectangle2D visibleRect = getVisibleZoomRectInThumbnail(zoomDragImageSize, zoom);
+        ThumbnailRenderResult result = new ThumbnailRenderResult(
+                new ImageIcon(preview),
+                visibleRect,
+                zoomDragImageBounds,
+                zoomDragImageSize,
+                baseThumbnail
+        );
+        applyThumbnailRenderResult(zoomDragLabel, result);
+    }
+
+    private boolean isPointInThumbnailZoomRect(JLabel label, Point point) {
+        if (Controller.getInstance().getControlPanel().getThumbnailZoomMode() != ThumbnailZoomMode.GRAYED_OUT) return false;
+        Object rect = label.getClientProperty(ZOOM_VISIBLE_RECT_PROPERTY);
+        return rect instanceof Rectangle2D visibleRect && visibleRect.contains(point);
+    }
+
+    private void clearThumbnailZoomDrag() {
+        if (zoomDragLabel != null) {
+            zoomDragLabel.setCursor(Cursor.getDefaultCursor());
+        }
+        zoomDragLabel = null;
+        zoomDragFile = null;
+        zoomDragStartPoint = null;
+        zoomDragStartSelection = null;
+        zoomDragImageSize = null;
+        zoomDragImageBounds = null;
     }
 
     public void reloadDirectory() {
@@ -964,6 +1100,7 @@ public class ThumbnailPanel extends JPanel {
         label.setBackground(Color.DARK_GRAY);
         label.putClientProperty("file", file);
         label.addMouseListener(mouseListener);
+        label.addMouseMotionListener((MouseMotionListener) mouseListener);
 
 //        in slideshow angezeigtes bild soll in thumbailview angezeigt werden
 
@@ -1019,9 +1156,9 @@ public class ThumbnailPanel extends JPanel {
                 label.setIcon(new ImageIcon(thumbnailFiles.get(0).getAbsolutePath()));
             } else {
                 CompletableFuture.runAsync(() -> {
-                    ImageIcon icon = createImageThumbnailIcon(file);
-                    if (icon != null) {
-                        SwingUtilities.invokeLater(() -> label.setIcon(icon));
+                    ThumbnailRenderResult result = createImageThumbnailIcon(file);
+                    if (result != null) {
+                        SwingUtilities.invokeLater(() -> applyThumbnailRenderResult(label, result));
                     }
                 }, Controller.getInstance().getExecutorService());
             }
@@ -1115,7 +1252,7 @@ public class ThumbnailPanel extends JPanel {
         }
     }
 
-    private ImageIcon createImageThumbnailIcon(File file) {
+    private ThumbnailRenderResult createImageThumbnailIcon(File file) {
         try {
             File resolved = AppState.get().getFileForCurrentDirectory(file);
             BufferedImage original;
@@ -1134,25 +1271,36 @@ public class ThumbnailPanel extends JPanel {
             int rotation = RotationHandler.getInstance().getRotation(file);
             BufferedImage rotated = H.rotate(original, rotation);
             ThumbnailZoomMode mode = Controller.getInstance().getControlPanel().getThumbnailZoomMode();
-            BufferedImage rendered = renderImageThumbnail(rotated, file, mode);
-            return new ImageIcon(rendered);
+            return renderImageThumbnail(rotated, file, mode);
         } catch (IOException e) {
             e.printStackTrace();
             return null;
         }
     }
 
-    private BufferedImage renderImageThumbnail(BufferedImage image, File file, ThumbnailZoomMode mode) {
-        ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
+    private ThumbnailRenderResult renderImageThumbnail(BufferedImage image, File file, ThumbnailZoomMode mode) {
+        return renderImageThumbnail(image, file, mode, ImageZoomHandler.getInstance().getZoomForFile(file));
+    }
+
+    private ThumbnailRenderResult renderImageThumbnail(BufferedImage image, File file, ThumbnailZoomMode mode, ImageZoomHandler.ZoomSelection zoom) {
         if (mode == ThumbnailZoomMode.ZOOMED && zoom != null) {
-            return renderZoomedThumbnail(image, zoom);
+            return new ThumbnailRenderResult(new ImageIcon(renderZoomedThumbnail(image, zoom)), null, null, null, image);
         }
 
         BufferedImage standard = renderStandardThumbnail(image);
         if (mode == ThumbnailZoomMode.GRAYED_OUT && zoom != null) {
-            paintGrayedOutZoomMask(standard, image, zoom);
+            BufferedImage masked = copyImage(standard);
+            Dimension imageSize = new Dimension(image.getWidth(), image.getHeight());
+            Rectangle2D visibleRect = paintGrayedOutZoomMask(masked, imageSize, zoom);
+            return new ThumbnailRenderResult(
+                    new ImageIcon(masked),
+                    visibleRect,
+                    getStandardRenderedImageBounds(image),
+                    imageSize,
+                    standard
+            );
         }
-        return standard;
+        return new ThumbnailRenderResult(new ImageIcon(standard), null, null, null, null);
     }
 
     private BufferedImage renderStandardThumbnail(BufferedImage image) {
@@ -1195,14 +1343,14 @@ public class ThumbnailPanel extends JPanel {
         return result;
     }
 
-    private void paintGrayedOutZoomMask(BufferedImage thumbnail, BufferedImage image, ImageZoomHandler.ZoomSelection zoom) {
+    private Rectangle2D paintGrayedOutZoomMask(BufferedImage thumbnail, Dimension imageSize, ImageZoomHandler.ZoomSelection zoom) {
         Graphics2D g = thumbnail.createGraphics();
         applyThumbnailRenderingHints(g);
 
-        Rectangle2D imageBounds = getStandardRenderedImageBounds(image);
-        Rectangle2D viewRect = getZoomViewRect(image, zoom);
-        double scaleX = imageBounds.getWidth() / image.getWidth();
-        double scaleY = imageBounds.getHeight() / image.getHeight();
+        Rectangle2D imageBounds = getStandardRenderedImageBounds(imageSize);
+        Rectangle2D viewRect = getZoomViewRect(imageSize, zoom);
+        double scaleX = imageBounds.getWidth() / imageSize.getWidth();
+        double scaleY = imageBounds.getHeight() / imageSize.getHeight();
 
         Rectangle2D visibleRect = new Rectangle2D.Double(
                 imageBounds.getX() + viewRect.getX() * scaleX,
@@ -1219,15 +1367,33 @@ public class ThumbnailPanel extends JPanel {
         g.setStroke(new BasicStroke(2f));
         g.draw(visibleRect);
         g.dispose();
+        return visibleRect;
+    }
+
+    private Rectangle2D getVisibleZoomRectInThumbnail(Dimension imageSize, ImageZoomHandler.ZoomSelection zoom) {
+        Rectangle2D imageBounds = getStandardRenderedImageBounds(imageSize);
+        Rectangle2D viewRect = getZoomViewRect(imageSize, zoom);
+        double scaleX = imageBounds.getWidth() / imageSize.getWidth();
+        double scaleY = imageBounds.getHeight() / imageSize.getHeight();
+        return new Rectangle2D.Double(
+                imageBounds.getX() + viewRect.getX() * scaleX,
+                imageBounds.getY() + viewRect.getY() * scaleY,
+                viewRect.getWidth() * scaleX,
+                viewRect.getHeight() * scaleY
+        );
     }
 
     private Rectangle2D getStandardRenderedImageBounds(BufferedImage image) {
-        double widthRatio = (double) THUMBNAIL_WIDTH / image.getWidth();
-        double heightRatio = (double) THUMBNAIL_HEIGHT / image.getHeight();
+        return getStandardRenderedImageBounds(new Dimension(image.getWidth(), image.getHeight()));
+    }
+
+    private Rectangle2D getStandardRenderedImageBounds(Dimension imageSize) {
+        double widthRatio = (double) THUMBNAIL_WIDTH / imageSize.getWidth();
+        double heightRatio = (double) THUMBNAIL_HEIGHT / imageSize.getHeight();
         double scale = Math.max(widthRatio, heightRatio);
 
-        double width = image.getWidth() * scale;
-        double height = image.getHeight() * scale;
+        double width = imageSize.getWidth() * scale;
+        double height = imageSize.getHeight() * scale;
         double x = (THUMBNAIL_WIDTH - width) / 2.0;
         double overflowY = Math.max(0, height - THUMBNAIL_HEIGHT);
         double y = -(overflowY / 3.0);
@@ -1236,13 +1402,17 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private Rectangle2D getZoomViewRect(BufferedImage image, ImageZoomHandler.ZoomSelection zoom) {
-        double selectedX = clamp(zoom.x(), 0, 1) * image.getWidth();
-        double selectedY = clamp(zoom.y(), 0, 1) * image.getHeight();
-        double selectedWidth = clamp(zoom.width(), 0, 1) * image.getWidth();
-        double selectedHeight = clamp(zoom.height(), 0, 1) * image.getHeight();
+        return getZoomViewRect(new Dimension(image.getWidth(), image.getHeight()), zoom);
+    }
+
+    private Rectangle2D getZoomViewRect(Dimension imageSize, ImageZoomHandler.ZoomSelection zoom) {
+        double selectedX = clamp(zoom.x(), 0, 1) * imageSize.getWidth();
+        double selectedY = clamp(zoom.y(), 0, 1) * imageSize.getHeight();
+        double selectedWidth = clamp(zoom.width(), 0, 1) * imageSize.getWidth();
+        double selectedHeight = clamp(zoom.height(), 0, 1) * imageSize.getHeight();
 
         if (selectedWidth <= 0 || selectedHeight <= 0) {
-            return new Rectangle2D.Double(0, 0, image.getWidth(), image.getHeight());
+            return new Rectangle2D.Double(0, 0, imageSize.getWidth(), imageSize.getHeight());
         }
 
         double viewportAspect = (double) THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT;
@@ -1256,13 +1426,13 @@ public class ThumbnailPanel extends JPanel {
             viewHeight = selectedWidth / viewportAspect;
         }
 
-        viewWidth = Math.min(viewWidth, image.getWidth());
-        viewHeight = Math.min(viewHeight, image.getHeight());
+        viewWidth = Math.min(viewWidth, imageSize.getWidth());
+        viewHeight = Math.min(viewHeight, imageSize.getHeight());
 
         double centerX = selectedX + selectedWidth / 2.0;
         double centerY = selectedY + selectedHeight / 2.0;
-        double x = clamp(centerX - viewWidth / 2.0, 0, image.getWidth() - viewWidth);
-        double y = clamp(centerY - viewHeight / 2.0, 0, image.getHeight() - viewHeight);
+        double x = clamp(centerX - viewWidth / 2.0, 0, imageSize.getWidth() - viewWidth);
+        double y = clamp(centerY - viewHeight / 2.0, 0, imageSize.getHeight() - viewHeight);
 
         return new Rectangle2D.Double(x, y, viewWidth, viewHeight);
     }
@@ -1284,8 +1454,25 @@ public class ThumbnailPanel extends JPanel {
         g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
     }
 
+    private BufferedImage copyImage(BufferedImage source) {
+        BufferedImage copy = new BufferedImage(source.getWidth(), source.getHeight(), source.getType());
+        Graphics2D g = copy.createGraphics();
+        g.drawImage(source, 0, 0, null);
+        g.dispose();
+        return copy;
+    }
+
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private record ThumbnailRenderResult(
+            ImageIcon icon,
+            Rectangle2D visibleRect,
+            Rectangle2D imageBounds,
+            Dimension imageSize,
+            BufferedImage renderImage
+    ) {
     }
 
     private Image getScaledImagePreserveRatio(Image srcImg, int maxWidth, int maxHeight) {

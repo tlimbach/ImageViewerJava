@@ -28,6 +28,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private BufferedImage image;
     private File file;
+    private ImageZoomHandler.ZoomSelection previewZoom;
     private Point dragStart;
     private Rectangle selection;
     private boolean overlayVisible;
@@ -126,8 +127,15 @@ public class ZoomableImagePanel extends JPanel {
     public void setImage(File file, BufferedImage image) {
         this.file = file;
         this.image = image;
+        this.previewZoom = null;
         this.selection = null;
         this.dragStart = null;
+        repaint();
+    }
+
+    public void setPreviewZoom(File file, ImageZoomHandler.ZoomSelection zoom) {
+        if (this.file == null || file == null || !this.file.equals(file)) return;
+        this.previewZoom = zoom;
         repaint();
     }
 
@@ -312,7 +320,7 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private Rectangle2D getRenderedImageBounds() {
-        ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
+        ImageZoomHandler.ZoomSelection zoom = previewZoom != null ? previewZoom : ImageZoomHandler.getInstance().getZoomForFile(file);
         Rectangle2D viewRect = zoom == null ? null : getZoomViewRect(zoom);
 
         if (viewRect != null) {
