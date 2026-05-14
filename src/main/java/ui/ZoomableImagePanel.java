@@ -1,12 +1,14 @@
 package ui;
 
 import event.ImageZoomPreviewEvent;
+import event.TagsChangedEvent;
 import event.UserCommand;
 import event.UserKeyboardEvent;
 import model.AppState;
 import service.Controller;
 import service.EventBus;
 import service.ImageZoomHandler;
+import service.TagHandler;
 
 import javax.imageio.ImageIO;
 import javax.swing.*;
@@ -24,6 +26,8 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.FileTime;
+import java.util.ArrayList;
+import java.util.List;
 
 public class ZoomableImagePanel extends JPanel {
 
@@ -36,14 +40,16 @@ public class ZoomableImagePanel extends JPanel {
     private static final double WHEEL_ZOOM_STEP = 1.12;
     private static final double MIN_WHEEL_ZOOM_SIZE = 0.02;
     private static final int WHEEL_ZOOM_SAVE_DELAY_MS = 250;
+    private static final String SPECIAL_TAG = "Ach Du Scheisse";
 
-    private final JButton displayModeButton = new JButton("Fullsize");
-    private final JButton previousButton = new JButton("Vorheriges");
-    private final JButton nextButton = new JButton("Nächstes");
-    private final JButton resetButton = new JButton("Reset");
-    private final JButton fullSizeButton = new JButton("Full size Zoom");
-    private final JButton cropButton = new JButton("Neues Bild");
-    private final JButton deleteButton = new JButton("Bild löschen");
+    private final OverlayButton displayModeButton = new OverlayButton("Fullsize");
+    private final OverlayButton previousButton = new OverlayButton("Vorheriges");
+    private final OverlayButton nextButton = new OverlayButton("Nächstes");
+    private final OverlayButton resetButton = new OverlayButton("Reset");
+    private final OverlayButton specialTagButton = new OverlayButton(SPECIAL_TAG);
+    private final OverlayButton cropButton = new OverlayButton("Neues Bild");
+    private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
+    private final OverlayButton closeButton = new OverlayButton("Schließen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
     private final Timer wheelZoomSaveTimer;
@@ -86,9 +92,9 @@ public class ZoomableImagePanel extends JPanel {
         resetButton.setFocusable(false);
         resetButton.setVisible(false);
         resetButton.addActionListener(e -> resetZoom());
-        fullSizeButton.setFocusable(false);
-        fullSizeButton.setVisible(false);
-        fullSizeButton.addActionListener(e -> setFullSizeZoom());
+        specialTagButton.setFocusable(false);
+        specialTagButton.setVisible(false);
+        specialTagButton.addActionListener(e -> addSpecialTagToCurrentImage());
         cropButton.setFocusable(false);
         cropButton.setVisible(false);
         cropButton.setToolTipText("Neues Bild aus Auswahl");
@@ -97,6 +103,10 @@ public class ZoomableImagePanel extends JPanel {
         deleteButton.setVisible(false);
         deleteButton.setToolTipText("Bild löschen");
         deleteButton.addActionListener(e -> deleteCurrentImage());
+        closeButton.setFocusable(false);
+        closeButton.setVisible(false);
+        closeButton.setToolTipText("Media View schließen");
+        closeButton.addActionListener(e -> closeMediaView());
         MouseAdapter buttonMouseHandler = new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
@@ -116,19 +126,22 @@ public class ZoomableImagePanel extends JPanel {
         displayModeButton.addMouseMotionListener(buttonMouseHandler);
         resetButton.addMouseListener(buttonMouseHandler);
         resetButton.addMouseMotionListener(buttonMouseHandler);
-        fullSizeButton.addMouseListener(buttonMouseHandler);
-        fullSizeButton.addMouseMotionListener(buttonMouseHandler);
+        specialTagButton.addMouseListener(buttonMouseHandler);
+        specialTagButton.addMouseMotionListener(buttonMouseHandler);
         cropButton.addMouseListener(buttonMouseHandler);
         cropButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
+        closeButton.addMouseListener(buttonMouseHandler);
+        closeButton.addMouseMotionListener(buttonMouseHandler);
         add(previousButton);
         add(nextButton);
         add(displayModeButton);
         add(resetButton);
-        add(fullSizeButton);
+        add(specialTagButton);
         add(cropButton);
         add(deleteButton);
+        add(closeButton);
         add(deleteConfirmationOverlay);
         setComponentZOrder(deleteConfirmationOverlay, 0);
 
@@ -208,6 +221,7 @@ public class ZoomableImagePanel extends JPanel {
 
     public void setImage(File file, BufferedImage image) {
         persistPendingWheelZoom();
+        boolean wasOverlayVisible = overlayVisible;
         this.file = file;
         this.image = image;
         this.previewZoom = null;
@@ -215,6 +229,8 @@ public class ZoomableImagePanel extends JPanel {
         this.selection = null;
         this.dragStart = null;
         this.panStart = null;
+        updatePanCursor();
+        setOverlayVisible(wasOverlayVisible && image != null);
         repaint();
     }
 
@@ -244,18 +260,6 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
     }
 
-    private void setFullSizeZoom() {
-        if (file == null) return;
-        clearPendingWheelZoom();
-        previewZoom = null;
-        displayFullSize = false;
-        ImageZoomHandler.ZoomSelection fullSizeZoom = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
-        EventBus.get().publish(new ImageZoomPreviewEvent(file, fullSizeZoom));
-        ImageZoomHandler.getInstance().setZoomForFile(file, fullSizeZoom);
-        setOverlayVisible(false);
-        repaint();
-    }
-
     private void setDisplayFullSize(boolean displayFullSize) {
         this.displayFullSize = displayFullSize;
         updateDisplayModeButton();
@@ -278,6 +282,29 @@ public class ZoomableImagePanel extends JPanel {
         }, null);
         setOverlayVisible(false);
         repaint();
+    }
+
+    private void addSpecialTagToCurrentImage() {
+        if (file == null) return;
+
+        List<String> tags = new ArrayList<>(TagHandler.getInstance().getTagsForFile(file.getName()));
+        if (tags.contains(SPECIAL_TAG)) {
+            tags.removeIf(SPECIAL_TAG::equals);
+        } else {
+            tags.add(SPECIAL_TAG);
+        }
+        TagHandler.getInstance().setTagsToFile(tags, file.getName());
+        EventBus.get().publish(new TagsChangedEvent());
+        showOverlayTemporarily();
+    }
+
+    private boolean hasSpecialTag() {
+        return file != null && TagHandler.getInstance().getTagsForFile(file.getName()).contains(SPECIAL_TAG);
+    }
+
+    private void closeMediaView() {
+        setOverlayVisible(false);
+        MediaView.getInstance().stopAndHide();
     }
 
     private void showDeletePopup(MouseEvent e) {
@@ -326,14 +353,17 @@ public class ZoomableImagePanel extends JPanel {
         boolean hasZoom = getActiveZoom() != null;
         previousButton.setVisible(visible && file != null);
         nextButton.setVisible(visible && file != null);
-        displayModeButton.setVisible(visible && hasZoom);
+        displayModeButton.setVisible(visible && file != null);
+        displayModeButton.setEnabled(hasZoom);
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
-        fullSizeButton.setVisible(visible && file != null);
+        specialTagButton.setVisible(visible && file != null);
         cropButton.setVisible(visible && file != null);
         cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
+        closeButton.setVisible(visible && file != null);
+        specialTagButton.setTextColor(hasSpecialTag() ? Color.LIGHT_GRAY : Color.BLACK);
         repaint();
     }
 
@@ -652,7 +682,7 @@ public class ZoomableImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        fullSizeButton.setBounds(
+        specialTagButton.setBounds(
                 x,
                 y + MENU_HEIGHT + MENU_GAP,
                 OVERLAY_BUTTON_WIDTH,
@@ -666,6 +696,12 @@ public class ZoomableImagePanel extends JPanel {
         );
         deleteButton.setBounds(
                 x,
+                y + (MENU_HEIGHT + MENU_GAP) * 3,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        closeButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
                 y + (MENU_HEIGHT + MENU_GAP) * 3,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
@@ -692,9 +728,10 @@ public class ZoomableImagePanel extends JPanel {
                 nextButton,
                 displayModeButton,
                 resetButton,
-                fullSizeButton,
+                specialTagButton,
                 cropButton,
-                deleteButton
+                deleteButton,
+                closeButton
         };
         Rectangle result = null;
         for (JButton button : buttons) {
@@ -826,5 +863,52 @@ public class ZoomableImagePanel extends JPanel {
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static class OverlayButton extends JButton {
+        private static final Color ENABLED_BACKGROUND = new Color(245, 245, 245, 185);
+        private static final Color DISABLED_BACKGROUND = new Color(245, 245, 245, 95);
+        private static final Color HOVER_BACKGROUND = new Color(255, 255, 255, 220);
+        private static final Color PRESSED_BACKGROUND = new Color(225, 225, 225, 220);
+        private static final Color BORDER_COLOR = new Color(0, 0, 0, 80);
+        private Color textColor = Color.BLACK;
+
+        OverlayButton(String text) {
+            super(text);
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setForeground(Color.BLACK);
+        }
+
+        void setTextColor(Color textColor) {
+            this.textColor = textColor;
+            setForeground(textColor);
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+
+            ButtonModel model = getModel();
+            Color background = isEnabled() ? ENABLED_BACKGROUND : DISABLED_BACKGROUND;
+            if (isEnabled() && model.isPressed()) {
+                background = PRESSED_BACKGROUND;
+            } else if (isEnabled() && model.isRollover()) {
+                background = HOVER_BACKGROUND;
+            }
+
+            g2.setColor(background);
+            g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+            g2.setColor(BORDER_COLOR);
+            g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, 8, 8);
+            g2.dispose();
+
+            setForeground(textColor);
+            super.paintComponent(g);
+        }
     }
 }

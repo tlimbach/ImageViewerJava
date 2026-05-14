@@ -116,6 +116,11 @@ public class TagEditDialog extends JDialog {
         }
     }
 
+    public void refreshCurrentFile() {
+        if (file == null || !isVisible()) return;
+        updateContent();
+    }
+
     private void updateContent() {
         tagsPanel.removeAll();
         checkBoxes.clear();

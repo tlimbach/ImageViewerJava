@@ -1,9 +1,11 @@
 package ui;
 
 import event.ImageZoomPreviewEvent;
+import event.TagsChangedEvent;
 import service.Controller;
 import service.EventBus;
 import service.ImageZoomHandler;
+import service.TagHandler;
 
 import javax.swing.*;
 import java.awt.*;
@@ -13,6 +15,8 @@ import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
 
 public class AnimatedImagePanel extends JPanel {
     // ------------------ STELLSCHRAUBEN ------------------
@@ -29,7 +33,7 @@ public class AnimatedImagePanel extends JPanel {
     private static final double PAN_SPEED_X = 0.005;
     private static final double PAN_SPEED_Y = 0.005;
     private static final int RESET_BUTTON_WIDTH = 96;
-    private static final int FULL_SIZE_BUTTON_WIDTH = 126;
+    private static final int SPECIAL_TAG_BUTTON_WIDTH = 150;
     private static final int DISPLAY_MODE_BUTTON_WIDTH = 92;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
@@ -37,6 +41,7 @@ public class AnimatedImagePanel extends JPanel {
     private static final int DELETE_BUTTON_WIDTH = 116;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
+    private static final String SPECIAL_TAG = "Ach Du Scheisse";
 
     private static double initialZoom = 0;
 
@@ -50,7 +55,7 @@ public class AnimatedImagePanel extends JPanel {
     private final Runnable onInteractionFinished;
     private final JButton displayModeButton = new JButton("Fullsize");
     private final JButton resetButton = new JButton("Reset");
-    private final JButton fullSizeButton = new JButton("Full size Zoom");
+    private final JButton specialTagButton = new JButton(SPECIAL_TAG);
     private final JButton deleteButton = new JButton("Bild löschen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
@@ -125,16 +130,11 @@ public class AnimatedImagePanel extends JPanel {
             repaint();
             finishInteraction();
         });
-        fullSizeButton.setFocusable(false);
-        fullSizeButton.setVisible(false);
-        fullSizeButton.addActionListener(e -> {
+        specialTagButton.setFocusable(false);
+        specialTagButton.setVisible(false);
+        specialTagButton.addActionListener(e -> {
             beginInteraction();
-            zoomSelection = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
-            displayFullSize = false;
-            EventBus.get().publish(new ImageZoomPreviewEvent(file, zoomSelection));
-            ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
-            setOverlayVisible(false);
-            repaint();
+            addSpecialTagToCurrentImage();
             finishInteraction();
         });
         deleteButton.setFocusable(false);
@@ -156,13 +156,13 @@ public class AnimatedImagePanel extends JPanel {
         displayModeButton.addMouseMotionListener(buttonMouseHandler);
         resetButton.addMouseListener(buttonMouseHandler);
         resetButton.addMouseMotionListener(buttonMouseHandler);
-        fullSizeButton.addMouseListener(buttonMouseHandler);
-        fullSizeButton.addMouseMotionListener(buttonMouseHandler);
+        specialTagButton.addMouseListener(buttonMouseHandler);
+        specialTagButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
         add(displayModeButton);
         add(resetButton);
-        add(fullSizeButton);
+        add(specialTagButton);
         add(deleteButton);
         add(deleteConfirmationOverlay);
         setComponentZOrder(deleteConfirmationOverlay, 0);
@@ -282,6 +282,24 @@ public class AnimatedImagePanel extends JPanel {
         overlayHideTimer.restart();
     }
 
+    private void addSpecialTagToCurrentImage() {
+        if (file == null) return;
+
+        List<String> tags = new ArrayList<>(TagHandler.getInstance().getTagsForFile(file.getName()));
+        if (tags.contains(SPECIAL_TAG)) {
+            tags.removeIf(SPECIAL_TAG::equals);
+        } else {
+            tags.add(SPECIAL_TAG);
+        }
+        TagHandler.getInstance().setTagsToFile(tags, file.getName());
+        EventBus.get().publish(new TagsChangedEvent());
+        showOverlayTemporarily();
+    }
+
+    private boolean hasSpecialTag() {
+        return file != null && TagHandler.getInstance().getTagsForFile(file.getName()).contains(SPECIAL_TAG);
+    }
+
     private void setOverlayVisible(boolean visible) {
         overlayVisible = visible;
         boolean hasZoom = zoomSelection != null;
@@ -289,7 +307,8 @@ public class AnimatedImagePanel extends JPanel {
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
-        fullSizeButton.setVisible(visible && file != null);
+        specialTagButton.setVisible(visible && file != null);
+        specialTagButton.setForeground(hasSpecialTag() ? Color.LIGHT_GRAY : Color.BLACK);
         deleteButton.setVisible(visible && file != null);
         repaint();
     }
@@ -447,20 +466,20 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!displayModeButton.isVisible() && !resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
+        if (!displayModeButton.isVisible() && !resetButton.isVisible() && !specialTagButton.isVisible() && !deleteButton.isVisible()) return;
         int x = displayModeButton.isVisible() ? displayModeButton.getX() : resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
         int y = displayModeButton.isVisible() ? displayModeButton.getY() : resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
         int right = Math.max(
                 Math.max(
                         displayModeButton.getX() + displayModeButton.getWidth(),
-                        Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth())
+                        Math.max(resetButton.getX() + resetButton.getWidth(), specialTagButton.getX() + specialTagButton.getWidth())
                 ),
                 deleteButton.getX() + deleteButton.getWidth()
         );
         int bottom = Math.max(
                 Math.max(
                         displayModeButton.getY() + displayModeButton.getHeight(),
-                        Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight())
+                        Math.max(resetButton.getY() + resetButton.getHeight(), specialTagButton.getY() + specialTagButton.getHeight())
                 ),
                 deleteButton.getY() + deleteButton.getHeight()
         );
@@ -530,21 +549,21 @@ public class AnimatedImagePanel extends JPanel {
     public void doLayout() {
         super.doLayout();
         displayModeButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - DISPLAY_MODE_BUTTON_WIDTH - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 3 - MENU_MARGIN),
+                Math.max(MENU_MARGIN, getWidth() - DISPLAY_MODE_BUTTON_WIDTH - RESET_BUTTON_WIDTH - SPECIAL_TAG_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 3 - MENU_MARGIN),
                 MENU_MARGIN,
                 DISPLAY_MODE_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         resetButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
+                Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - SPECIAL_TAG_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
                 MENU_MARGIN,
                 RESET_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        fullSizeButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP - MENU_MARGIN),
+        specialTagButton.setBounds(
+                Math.max(MENU_MARGIN, getWidth() - SPECIAL_TAG_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP - MENU_MARGIN),
                 MENU_MARGIN,
-                FULL_SIZE_BUTTON_WIDTH,
+                SPECIAL_TAG_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         deleteButton.setBounds(
