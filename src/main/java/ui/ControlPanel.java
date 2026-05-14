@@ -12,8 +12,11 @@ import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
 import java.awt.event.FocusAdapter;
 import java.awt.event.FocusEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
@@ -133,43 +136,10 @@ public class ControlPanel extends JPanel {
     private void addFileChooserButton() {
         JButton btnFileChooser = new JButton("Verzeichnis wählen");
         JButton btnOpenFinder = new JButton("Finder");
-        JLabel lblInfo = new JLabel("Noch nichts gewählt");
 
         btnFileChooser.addActionListener(a -> {
             MediaView.getInstance().stopAndHide();
-
-            JFileChooser chooser = new JFileChooser();
-            chooser.setPreferredSize(new Dimension(800, 600));
-            chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-            chooser.setAccessory(lblInfo);
-
-            chooser.addPropertyChangeListener(evt -> {
-                if (JFileChooser.DIRECTORY_CHANGED_PROPERTY.equals(evt.getPropertyName())
-                        || JFileChooser.SELECTED_FILE_CHANGED_PROPERTY.equals(evt.getPropertyName())) {
-                    File selected = (File) evt.getNewValue();
-                    if (selected != null && selected.isDirectory()) {
-                        File[] files = selected.listFiles();
-                        int imageCount = files == null ? 0 : (int) Arrays.stream(files).filter(Controller::isImageFile).count();
-                        int videoCount = files == null ? 0 : (int) Arrays.stream(files).filter(Controller::isVideoFile).count();
-                        lblInfo.setText("<html><br>Bilder: " + imageCount + "<br>Videos: " + videoCount + "</html>");
-                    } else {
-                        lblInfo.setText("Ungültige Auswahl");
-                    }
-                }
-            });
-
-            if (AppState.get().getCurrentDirectory() != null) {
-                chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().toFile());
-            }
-
-            int result = chooser.showOpenDialog(this);
-            if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
-                return;
-            }
-
-            Path directory = chooser.getSelectedFile().toPath();
-            AppState.get().setCurrentDirectory(directory);
-            EventBus.get().publish(new CurrentDirectoryChangedEvent());
+            showDirectorySelectionDialog();
         });
 
         btnOpenFinder.addActionListener(a -> {
@@ -203,6 +173,133 @@ public class ControlPanel extends JPanel {
                 () -> Controller.getInstance().getThumbnailPanel().reloadDirectory()
         ));
         add(H.makeHorizontalPanel(new JLabel("Thumbs"), cmbThumbnailZoomMode));
+    }
+
+    private void showDirectorySelectionDialog() {
+        JDialog dialog = new JDialog(SwingUtilities.getWindowAncestor(this), "Verzeichnis wählen", Dialog.ModalityType.APPLICATION_MODAL);
+        DefaultListModel<Path> model = new DefaultListModel<>();
+        SettingsService.getIntance().loadDirectoryHistory().forEach(model::addElement);
+
+        JList<Path> historyList = new JList<>(model);
+        historyList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        historyList.setVisibleRowCount(10);
+        historyList.setFixedCellHeight(34);
+        historyList.setSelectionBackground(new Color(25, 105, 210));
+        historyList.setSelectionForeground(Color.WHITE);
+        historyList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel(value == null ? "" : value.toString());
+            label.setOpaque(true);
+            label.setBorder(BorderFactory.createCompoundBorder(
+                    BorderFactory.createMatteBorder(0, 0, 1, 0, new Color(220, 220, 220)),
+                    BorderFactory.createEmptyBorder(6, 8, 6, 8)
+            ));
+            if (isSelected) {
+                label.setBackground(list.getSelectionBackground());
+                label.setForeground(list.getSelectionForeground());
+            } else {
+                label.setBackground(index % 2 == 0 ? Color.WHITE : new Color(245, 245, 245));
+                label.setForeground(list.getForeground());
+            }
+            return label;
+        });
+        historyList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2 && SwingUtilities.isLeftMouseButton(e)) {
+                    Path selected = historyList.getSelectedValue();
+                    if (selected != null && loadDirectoryFromHistory(selected, dialog)) {
+                        dialog.dispose();
+                    }
+                }
+            }
+        });
+
+        JButton btnOpenSelected = new JButton("Öffnen");
+        btnOpenSelected.addActionListener(e -> {
+            Path selected = historyList.getSelectedValue();
+            if (selected != null && loadDirectoryFromHistory(selected, dialog)) {
+                dialog.dispose();
+            }
+        });
+
+        JButton btnChooseOther = new JButton("Anderes Verzeichnis wählen...");
+        btnChooseOther.addActionListener(e -> {
+            Path selected = chooseDirectoryWithFileChooser(dialog);
+            if (selected != null) {
+                loadDirectory(selected);
+                dialog.dispose();
+            }
+        });
+
+        JButton btnRemove = new JButton("Aus Liste entfernen");
+        btnRemove.addActionListener(e -> {
+            Path selected = historyList.getSelectedValue();
+            if (selected == null) return;
+            SettingsService.getIntance().removeDirectoryFromHistory(selected);
+            model.removeElement(selected);
+        });
+
+        JButton btnClose = new JButton("Schließen");
+        btnClose.addActionListener(e -> dialog.dispose());
+
+        Component buttonPanel = H.makeHorizontalPanel(btnOpenSelected, btnChooseOther, btnRemove, btnClose);
+        JPanel content = new JPanel(new BorderLayout(8, 8));
+        content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        content.add(new JScrollPane(historyList), BorderLayout.CENTER);
+        content.add(buttonPanel, BorderLayout.SOUTH);
+
+        dialog.setContentPane(content);
+        dialog.setPreferredSize(new Dimension(760, 360));
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+    }
+
+    private boolean loadDirectoryFromHistory(Path directory, Component parent) {
+        if (!Files.isDirectory(directory)) {
+            JOptionPane.showMessageDialog(parent, "Das Verzeichnis existiert nicht mehr.", "Verzeichnis wählen", JOptionPane.WARNING_MESSAGE);
+            return false;
+        }
+        loadDirectory(directory);
+        return true;
+    }
+
+    private Path chooseDirectoryWithFileChooser(Component parent) {
+        JLabel lblInfo = new JLabel("Noch nichts gewählt");
+        JFileChooser chooser = new JFileChooser();
+        chooser.setPreferredSize(new Dimension(800, 600));
+        chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
+        chooser.setAccessory(lblInfo);
+
+        chooser.addPropertyChangeListener(evt -> {
+            if (JFileChooser.DIRECTORY_CHANGED_PROPERTY.equals(evt.getPropertyName())
+                    || JFileChooser.SELECTED_FILE_CHANGED_PROPERTY.equals(evt.getPropertyName())) {
+                File selected = (File) evt.getNewValue();
+                if (selected != null && selected.isDirectory()) {
+                    File[] files = selected.listFiles();
+                    int imageCount = files == null ? 0 : (int) Arrays.stream(files).filter(Controller::isImageFile).count();
+                    int videoCount = files == null ? 0 : (int) Arrays.stream(files).filter(Controller::isVideoFile).count();
+                    lblInfo.setText("<html><br>Bilder: " + imageCount + "<br>Videos: " + videoCount + "</html>");
+                } else {
+                    lblInfo.setText("Ungültige Auswahl");
+                }
+            }
+        });
+
+        if (AppState.get().getCurrentDirectory() != null) {
+            chooser.setCurrentDirectory(AppState.get().getCurrentDirectory().toFile());
+        }
+
+        int result = chooser.showOpenDialog(parent);
+        if (result != JFileChooser.APPROVE_OPTION || chooser.getSelectedFile() == null) {
+            return null;
+        }
+        return chooser.getSelectedFile().toPath();
+    }
+
+    private void loadDirectory(Path directory) {
+        AppState.get().setCurrentDirectory(directory);
+        EventBus.get().publish(new CurrentDirectoryChangedEvent());
     }
 
     private void applyMediaLimitFromField() {

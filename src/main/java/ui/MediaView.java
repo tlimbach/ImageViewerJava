@@ -553,7 +553,18 @@ public class MediaView {
     public void stopAndHide() {
         Runnable task = () -> {
             mediaPlayerComponent.mediaPlayer().controls().stop();
+            stopSlideshowProgress();
             setVideoOverlayActive(false);
+            if (isFullscreen) {
+                GraphicsDevice device = getCurrentScreenDeviceForFrame(frame);
+                device.setFullScreenWindow(null);
+                frame.dispose();
+                frame.setUndecorated(false);
+                if (windowedBounds != null) {
+                    frame.setBounds(windowedBounds);
+                }
+                isFullscreen = false;
+            }
             frame.setVisible(false);
             Controller.getInstance().getControlPanel().resetPlayPauseButton();
         };
