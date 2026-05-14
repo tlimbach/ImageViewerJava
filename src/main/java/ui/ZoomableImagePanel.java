@@ -8,6 +8,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -24,6 +25,9 @@ public class ZoomableImagePanel extends JPanel {
     private static final int DELETE_BUTTON_WIDTH = 116;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
+    private static final double WHEEL_ZOOM_STEP = 1.12;
+    private static final double MIN_WHEEL_ZOOM_SIZE = 0.02;
+    private static final int WHEEL_ZOOM_SAVE_DELAY_MS = 250;
 
     private final JButton displayModeButton = new JButton("Fullsize");
     private final JButton resetButton = new JButton("Reset");
@@ -31,6 +35,7 @@ public class ZoomableImagePanel extends JPanel {
     private final JButton deleteButton = new JButton("Bild löschen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
+    private final Timer wheelZoomSaveTimer;
 
     private BufferedImage image;
     private File file;
@@ -40,6 +45,8 @@ public class ZoomableImagePanel extends JPanel {
     private Point panStart;
     private ImageZoomHandler.ZoomSelection panStartZoom;
     private Rectangle2D panStartImageBounds;
+    private File pendingWheelZoomFile;
+    private ImageZoomHandler.ZoomSelection pendingWheelZoom;
     private boolean overlayVisible;
     private boolean displayFullSize;
 
@@ -91,6 +98,8 @@ public class ZoomableImagePanel extends JPanel {
 
         overlayHideTimer = new Timer(1000, e -> setOverlayVisible(false));
         overlayHideTimer.setRepeats(false);
+        wheelZoomSaveTimer = new Timer(WHEEL_ZOOM_SAVE_DELAY_MS, e -> persistPendingWheelZoom());
+        wheelZoomSaveTimer.setRepeats(false);
 
         MouseAdapter mouseHandler = new MouseAdapter() {
             @Override
@@ -158,15 +167,18 @@ public class ZoomableImagePanel extends JPanel {
 
         addMouseListener(mouseHandler);
         addMouseMotionListener(mouseHandler);
+        addMouseWheelListener(this::handleWheelZoom);
     }
 
     public void setImage(File file, BufferedImage image) {
+        persistPendingWheelZoom();
         this.file = file;
         this.image = image;
         this.previewZoom = null;
         this.displayFullSize = false;
         this.selection = null;
         this.dragStart = null;
+        this.panStart = null;
         repaint();
     }
 
@@ -183,6 +195,7 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void resetZoom() {
+        clearPendingWheelZoom();
         previewZoom = null;
         displayFullSize = false;
         ImageZoomHandler.getInstance().resetZoomForFile(file);
@@ -192,6 +205,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private void setFullSizeZoom() {
         if (file == null) return;
+        clearPendingWheelZoom();
         previewZoom = null;
         displayFullSize = false;
         ImageZoomHandler.ZoomSelection fullSizeZoom = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
@@ -241,7 +255,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private void setOverlayVisible(boolean visible) {
         overlayVisible = visible;
-        boolean hasZoom = file != null && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
+        boolean hasZoom = getActiveZoom() != null;
         displayModeButton.setVisible(visible && hasZoom);
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
@@ -279,12 +293,13 @@ public class ZoomableImagePanel extends JPanel {
                 selectedImageRect.getWidth() / image.getWidth(),
                 selectedImageRect.getHeight() / image.getHeight()
         );
+        clearPendingWheelZoom();
         ImageZoomHandler.getInstance().setZoomForFile(file, zoom);
         displayFullSize = false;
     }
 
     private boolean tryStartPan(MouseEvent e) {
-        ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
+        ImageZoomHandler.ZoomSelection zoom = getActiveZoom();
         if (zoom == null || displayFullSize || e.isShiftDown()) return false;
 
         panStart = e.getPoint();
@@ -316,6 +331,7 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
 
         if (persist) {
+            clearPendingWheelZoom();
             ImageZoomHandler.getInstance().setZoomForFile(file, updated);
         }
     }
@@ -328,8 +344,93 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void updatePanCursor() {
-        boolean canPan = file != null && !displayFullSize && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
+        boolean canPan = file != null && !displayFullSize && getActiveZoom() != null;
         setCursor(canPan ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+    }
+
+    private ImageZoomHandler.ZoomSelection getActiveZoom() {
+        if (file == null) return null;
+        return previewZoom != null ? previewZoom : ImageZoomHandler.getInstance().getZoomForFile(file);
+    }
+
+    private void handleWheelZoom(MouseWheelEvent e) {
+        if (image == null || file == null) return;
+
+        double wheelRotation = e.getPreciseWheelRotation();
+        if (wheelRotation == 0) return;
+
+        e.consume();
+        showOverlayTemporarily();
+
+        ImageZoomHandler.ZoomSelection currentZoom = previewZoom != null
+                ? previewZoom
+                : ImageZoomHandler.getInstance().getZoomForFile(file);
+
+        if (currentZoom == null && wheelRotation > 0) {
+            return;
+        }
+
+        Rectangle2D imageBounds = getRenderedImageBounds();
+        if (imageBounds.getWidth() <= 0 || imageBounds.getHeight() <= 0) return;
+
+        double focusX = clamp(
+                (e.getX() - imageBounds.getX()) * image.getWidth() / imageBounds.getWidth(),
+                0,
+                image.getWidth()
+        );
+        double focusY = clamp(
+                (e.getY() - imageBounds.getY()) * image.getHeight() / imageBounds.getHeight(),
+                0,
+                image.getHeight()
+        );
+
+        if (currentZoom == null) {
+            currentZoom = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
+        }
+
+        double factor = Math.pow(WHEEL_ZOOM_STEP, wheelRotation);
+        double newWidth = clamp(currentZoom.width() * factor, MIN_WHEEL_ZOOM_SIZE, 1);
+        double newHeight = clamp(currentZoom.height() * factor, MIN_WHEEL_ZOOM_SIZE, 1);
+
+        double focusNormalizedX = focusX / image.getWidth();
+        double focusNormalizedY = focusY / image.getHeight();
+        double oldWidth = Math.max(currentZoom.width(), MIN_WHEEL_ZOOM_SIZE);
+        double oldHeight = Math.max(currentZoom.height(), MIN_WHEEL_ZOOM_SIZE);
+        double ratioX = clamp((focusNormalizedX - currentZoom.x()) / oldWidth, 0, 1);
+        double ratioY = clamp((focusNormalizedY - currentZoom.y()) / oldHeight, 0, 1);
+
+        double newX = clamp(focusNormalizedX - ratioX * newWidth, 0, 1 - newWidth);
+        double newY = clamp(focusNormalizedY - ratioY * newHeight, 0, 1 - newHeight);
+
+        ImageZoomHandler.ZoomSelection updated = new ImageZoomHandler.ZoomSelection(
+                newX,
+                newY,
+                newWidth,
+                newHeight
+        );
+
+        displayFullSize = false;
+        previewZoom = updated;
+        pendingWheelZoomFile = file;
+        pendingWheelZoom = updated;
+        EventBus.get().publish(new ImageZoomPreviewEvent(file, updated));
+        wheelZoomSaveTimer.restart();
+        updatePanCursor();
+        repaint();
+    }
+
+    private void persistPendingWheelZoom() {
+        if (pendingWheelZoomFile == null || pendingWheelZoom == null) return;
+        wheelZoomSaveTimer.stop();
+        ImageZoomHandler.getInstance().setZoomForFile(pendingWheelZoomFile, pendingWheelZoom);
+        pendingWheelZoomFile = null;
+        pendingWheelZoom = null;
+    }
+
+    private void clearPendingWheelZoom() {
+        wheelZoomSaveTimer.stop();
+        pendingWheelZoomFile = null;
+        pendingWheelZoom = null;
     }
 
     private Rectangle toImageRectangle(Rectangle panelRect, Rectangle2D imageBounds) {
@@ -451,7 +552,7 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void paintZoomMarker(Graphics2D g2) {
-        if (file == null || ImageZoomHandler.getInstance().getZoomForFile(file) == null) return;
+        if (getActiveZoom() == null) return;
 
         int w = getWidth();
         int h = getHeight();

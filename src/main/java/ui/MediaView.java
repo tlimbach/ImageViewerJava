@@ -15,7 +15,6 @@ import java.awt.*;
 import java.util.List;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;
-import java.awt.event.MouseWheelEvent;
 import java.awt.event.KeyEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
@@ -39,13 +38,6 @@ public class MediaView {
     private final SlideshowProgressOverlay slideshowProgressOverlay = new SlideshowProgressOverlay();
     private final SlideshowCountdownOverlay slideshowCountdownOverlay = new SlideshowCountdownOverlay();
     private boolean videoOverlayActive;
-    private double wheelNavigationAccumulator;
-    private long lastWheelNavigationTime;
-    private int lastWheelDirection;
-
-    private static final double WHEEL_NAVIGATION_THRESHOLD = 3.0;
-    private static final long WHEEL_NAVIGATION_COOLDOWN_MS = 350;
-
     public static MediaView getInstance() {
         return instance;
     }
@@ -143,7 +135,6 @@ public class MediaView {
         initPlayerListener();
         startPositionUpdateTimer();
         startOverlayHoverTimer();
-        installMouseWheelNavigation();
 
         frame.addComponentListener(new ComponentAdapter() {
             @Override
@@ -625,47 +616,6 @@ public class MediaView {
         SwingUtilities.convertPointFromScreen(point, frame.getLayeredPane());
         Rectangle stackBounds = SwingUtilities.convertRectangle(stackPanel.getParent(), stackPanel.getBounds(), frame.getLayeredPane());
         videoProgressOverlay.setMouseOverVideo(stackBounds.contains(point));
-    }
-
-    private void installMouseWheelNavigation() {
-        Toolkit.getDefaultToolkit().addAWTEventListener(event -> {
-            if (!(event instanceof MouseWheelEvent wheelEvent)) return;
-            if (!frame.isVisible() || currentFile == null) return;
-
-            Point mouseLocation = MouseInfo.getPointerInfo().getLocation();
-            Rectangle frameBounds = frame.getBounds();
-            if (!frameBounds.contains(mouseLocation)) return;
-
-            int direction = Integer.compare(wheelEvent.getWheelRotation(), 0);
-            if (direction == 0) return;
-
-            long now = System.currentTimeMillis();
-            if (now - lastWheelNavigationTime < WHEEL_NAVIGATION_COOLDOWN_MS) {
-                wheelEvent.consume();
-                return;
-            }
-
-            if (direction != lastWheelDirection) {
-                wheelNavigationAccumulator = 0;
-                lastWheelDirection = direction;
-            }
-
-            wheelNavigationAccumulator += Math.abs(wheelEvent.getPreciseWheelRotation());
-            wheelEvent.consume();
-
-            if (wheelNavigationAccumulator < WHEEL_NAVIGATION_THRESHOLD) {
-                return;
-            }
-
-            wheelNavigationAccumulator = 0;
-            lastWheelNavigationTime = now;
-
-            if (direction > 0) {
-                EventBus.get().publish(new UserKeyboardEvent(UserCommand.RIGHT));
-            } else {
-                EventBus.get().publish(new UserKeyboardEvent(UserCommand.LEFT));
-            }
-        }, AWTEvent.MOUSE_WHEEL_EVENT_MASK);
     }
 
 }
