@@ -30,6 +30,7 @@ public class AnimatedImagePanel extends JPanel {
     private static final double PAN_SPEED_Y = 0.005;
     private static final int RESET_BUTTON_WIDTH = 96;
     private static final int FULL_SIZE_BUTTON_WIDTH = 126;
+    private static final int DISPLAY_MODE_BUTTON_WIDTH = 92;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MENU_GAP = 8;
@@ -47,6 +48,7 @@ public class AnimatedImagePanel extends JPanel {
     private final File file;
     private final Runnable onInteractionStarted;
     private final Runnable onInteractionFinished;
+    private final JButton displayModeButton = new JButton("Fullsize");
     private final JButton resetButton = new JButton("Reset");
     private final JButton fullSizeButton = new JButton("Full size Zoom");
     private final JButton deleteButton = new JButton("Bild löschen");
@@ -63,6 +65,7 @@ public class AnimatedImagePanel extends JPanel {
     private Rectangle selection;
     private Rectangle2D renderedImageBounds;
     private boolean overlayVisible;
+    private boolean displayFullSize;
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
         this(image, newWidth, newHeight, null, null, null, null);
@@ -107,12 +110,17 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void installResetButton() {
+        displayModeButton.setFocusable(false);
+        displayModeButton.setVisible(false);
+        displayModeButton.addActionListener(e -> setDisplayFullSize(!displayFullSize));
+
         resetButton.setFocusable(false);
         resetButton.setVisible(false);
         resetButton.addActionListener(e -> {
             beginInteraction();
             ImageZoomHandler.getInstance().resetZoomForFile(file);
             zoomSelection = null;
+            displayFullSize = false;
             setOverlayVisible(false);
             repaint();
             finishInteraction();
@@ -122,6 +130,7 @@ public class AnimatedImagePanel extends JPanel {
         fullSizeButton.addActionListener(e -> {
             beginInteraction();
             zoomSelection = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
+            displayFullSize = false;
             EventBus.get().publish(new ImageZoomPreviewEvent(file, zoomSelection));
             ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
             setOverlayVisible(false);
@@ -143,12 +152,15 @@ public class AnimatedImagePanel extends JPanel {
                 showOverlayTemporarily();
             }
         };
+        displayModeButton.addMouseListener(buttonMouseHandler);
+        displayModeButton.addMouseMotionListener(buttonMouseHandler);
         resetButton.addMouseListener(buttonMouseHandler);
         resetButton.addMouseMotionListener(buttonMouseHandler);
         fullSizeButton.addMouseListener(buttonMouseHandler);
         fullSizeButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
+        add(displayModeButton);
         add(resetButton);
         add(fullSizeButton);
         add(deleteButton);
@@ -273,11 +285,24 @@ public class AnimatedImagePanel extends JPanel {
     private void setOverlayVisible(boolean visible) {
         overlayVisible = visible;
         boolean hasZoom = zoomSelection != null;
+        displayModeButton.setVisible(visible && hasZoom);
+        updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
         fullSizeButton.setVisible(visible && file != null);
         deleteButton.setVisible(visible && file != null);
         repaint();
+    }
+
+    private void setDisplayFullSize(boolean displayFullSize) {
+        this.displayFullSize = displayFullSize;
+        updateDisplayModeButton();
+        showOverlayTemporarily();
+        repaint();
+    }
+
+    private void updateDisplayModeButton() {
+        displayModeButton.setText(displayFullSize ? "cropped" : "Fullsize");
     }
 
     private Rectangle createRectangle(Point a, Point b) {
@@ -307,6 +332,7 @@ public class AnimatedImagePanel extends JPanel {
                 selectedImageRect.getHeight() / image.getHeight()
         );
         ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
+        displayFullSize = false;
         setOverlayVisible(true);
     }
 
@@ -421,15 +447,21 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
-        int x = resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
-        int y = resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
+        if (!displayModeButton.isVisible() && !resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
+        int x = displayModeButton.isVisible() ? displayModeButton.getX() : resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
+        int y = displayModeButton.isVisible() ? displayModeButton.getY() : resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
         int right = Math.max(
-                Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth()),
+                Math.max(
+                        displayModeButton.getX() + displayModeButton.getWidth(),
+                        Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth())
+                ),
                 deleteButton.getX() + deleteButton.getWidth()
         );
         int bottom = Math.max(
-                Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight()),
+                Math.max(
+                        displayModeButton.getY() + displayModeButton.getHeight(),
+                        Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight())
+                ),
                 deleteButton.getY() + deleteButton.getHeight()
         );
         g2.setColor(new Color(0, 0, 0, 120));
@@ -451,7 +483,7 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private Rectangle2D getBaseViewRect(int targetWidth, int targetHeight) {
-        if (zoomSelection == null) {
+        if (zoomSelection == null || displayFullSize) {
             return new Rectangle2D.Double(0, 0, image.getWidth(), image.getHeight());
         }
 
@@ -497,6 +529,12 @@ public class AnimatedImagePanel extends JPanel {
     @Override
     public void doLayout() {
         super.doLayout();
+        displayModeButton.setBounds(
+                Math.max(MENU_MARGIN, getWidth() - DISPLAY_MODE_BUTTON_WIDTH - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 3 - MENU_MARGIN),
+                MENU_MARGIN,
+                DISPLAY_MODE_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
         resetButton.setBounds(
                 Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
                 MENU_MARGIN,

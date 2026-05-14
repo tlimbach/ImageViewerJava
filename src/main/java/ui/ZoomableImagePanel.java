@@ -17,6 +17,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private static final int RESET_BUTTON_WIDTH = 96;
     private static final int FULL_SIZE_BUTTON_WIDTH = 126;
+    private static final int DISPLAY_MODE_BUTTON_WIDTH = 92;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MENU_GAP = 8;
@@ -24,6 +25,7 @@ public class ZoomableImagePanel extends JPanel {
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
 
+    private final JButton displayModeButton = new JButton("Fullsize");
     private final JButton resetButton = new JButton("Reset");
     private final JButton fullSizeButton = new JButton("Full size Zoom");
     private final JButton deleteButton = new JButton("Bild löschen");
@@ -39,12 +41,17 @@ public class ZoomableImagePanel extends JPanel {
     private ImageZoomHandler.ZoomSelection panStartZoom;
     private Rectangle2D panStartImageBounds;
     private boolean overlayVisible;
+    private boolean displayFullSize;
 
     public ZoomableImagePanel() {
         setBackground(Color.BLACK);
         setOpaque(true);
         setLayout(null);
         setDoubleBuffered(true);
+
+        displayModeButton.setFocusable(false);
+        displayModeButton.setVisible(false);
+        displayModeButton.addActionListener(e -> setDisplayFullSize(!displayFullSize));
 
         resetButton.setFocusable(false);
         resetButton.setVisible(false);
@@ -67,12 +74,15 @@ public class ZoomableImagePanel extends JPanel {
                 showOverlayTemporarily();
             }
         };
+        displayModeButton.addMouseListener(buttonMouseHandler);
+        displayModeButton.addMouseMotionListener(buttonMouseHandler);
         resetButton.addMouseListener(buttonMouseHandler);
         resetButton.addMouseMotionListener(buttonMouseHandler);
         fullSizeButton.addMouseListener(buttonMouseHandler);
         fullSizeButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
+        add(displayModeButton);
         add(resetButton);
         add(fullSizeButton);
         add(deleteButton);
@@ -154,6 +164,7 @@ public class ZoomableImagePanel extends JPanel {
         this.file = file;
         this.image = image;
         this.previewZoom = null;
+        this.displayFullSize = false;
         this.selection = null;
         this.dragStart = null;
         repaint();
@@ -173,6 +184,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private void resetZoom() {
         previewZoom = null;
+        displayFullSize = false;
         ImageZoomHandler.getInstance().resetZoomForFile(file);
         setOverlayVisible(false);
         repaint();
@@ -181,10 +193,19 @@ public class ZoomableImagePanel extends JPanel {
     private void setFullSizeZoom() {
         if (file == null) return;
         previewZoom = null;
+        displayFullSize = false;
         ImageZoomHandler.ZoomSelection fullSizeZoom = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
         EventBus.get().publish(new ImageZoomPreviewEvent(file, fullSizeZoom));
         ImageZoomHandler.getInstance().setZoomForFile(file, fullSizeZoom);
         setOverlayVisible(false);
+        repaint();
+    }
+
+    private void setDisplayFullSize(boolean displayFullSize) {
+        this.displayFullSize = displayFullSize;
+        updateDisplayModeButton();
+        showOverlayTemporarily();
+        updatePanCursor();
         repaint();
     }
 
@@ -221,11 +242,17 @@ public class ZoomableImagePanel extends JPanel {
     private void setOverlayVisible(boolean visible) {
         overlayVisible = visible;
         boolean hasZoom = file != null && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
+        displayModeButton.setVisible(visible && hasZoom);
+        updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
         fullSizeButton.setVisible(visible && file != null);
         deleteButton.setVisible(visible && file != null);
         repaint();
+    }
+
+    private void updateDisplayModeButton() {
+        displayModeButton.setText(displayFullSize ? "cropped" : "Fullsize");
     }
 
     private Rectangle createRectangle(Point a, Point b) {
@@ -253,11 +280,12 @@ public class ZoomableImagePanel extends JPanel {
                 selectedImageRect.getHeight() / image.getHeight()
         );
         ImageZoomHandler.getInstance().setZoomForFile(file, zoom);
+        displayFullSize = false;
     }
 
     private boolean tryStartPan(MouseEvent e) {
         ImageZoomHandler.ZoomSelection zoom = ImageZoomHandler.getInstance().getZoomForFile(file);
-        if (zoom == null || e.isShiftDown()) return false;
+        if (zoom == null || displayFullSize || e.isShiftDown()) return false;
 
         panStart = e.getPoint();
         panStartZoom = previewZoom != null ? previewZoom : zoom;
@@ -300,7 +328,7 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void updatePanCursor() {
-        boolean canPan = file != null && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
+        boolean canPan = file != null && !displayFullSize && ImageZoomHandler.getInstance().getZoomForFile(file) != null;
         setCursor(canPan ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
     }
 
@@ -321,6 +349,12 @@ public class ZoomableImagePanel extends JPanel {
     @Override
     public void doLayout() {
         super.doLayout();
+        displayModeButton.setBounds(
+                Math.max(MENU_MARGIN, getWidth() - DISPLAY_MODE_BUTTON_WIDTH - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 3 - MENU_MARGIN),
+                MENU_MARGIN,
+                DISPLAY_MODE_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
         resetButton.setBounds(
                 Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
                 MENU_MARGIN,
@@ -395,15 +429,21 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
-        int x = resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
-        int y = resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
+        if (!displayModeButton.isVisible() && !resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
+        int x = displayModeButton.isVisible() ? displayModeButton.getX() : resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
+        int y = displayModeButton.isVisible() ? displayModeButton.getY() : resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
         int right = Math.max(
-                Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth()),
+                Math.max(
+                        displayModeButton.getX() + displayModeButton.getWidth(),
+                        Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth())
+                ),
                 deleteButton.getX() + deleteButton.getWidth()
         );
         int bottom = Math.max(
-                Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight()),
+                Math.max(
+                        displayModeButton.getY() + displayModeButton.getHeight(),
+                        Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight())
+                ),
                 deleteButton.getY() + deleteButton.getHeight()
         );
         g2.setColor(new Color(0, 0, 0, 120));
@@ -425,7 +465,7 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private Rectangle2D getRenderedImageBounds() {
-        ImageZoomHandler.ZoomSelection zoom = previewZoom != null ? previewZoom : ImageZoomHandler.getInstance().getZoomForFile(file);
+        ImageZoomHandler.ZoomSelection zoom = displayFullSize ? null : previewZoom != null ? previewZoom : ImageZoomHandler.getInstance().getZoomForFile(file);
         Rectangle2D viewRect = zoom == null ? null : getZoomViewRect(zoom);
 
         if (viewRect != null) {
