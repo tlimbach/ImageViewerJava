@@ -1,6 +1,8 @@
 package ui;
 
 import event.ImageZoomPreviewEvent;
+import event.UserCommand;
+import event.UserKeyboardEvent;
 import service.EventBus;
 import service.ImageZoomHandler;
 
@@ -16,13 +18,10 @@ import java.io.File;
 
 public class ZoomableImagePanel extends JPanel {
 
-    private static final int RESET_BUTTON_WIDTH = 96;
-    private static final int FULL_SIZE_BUTTON_WIDTH = 126;
-    private static final int DISPLAY_MODE_BUTTON_WIDTH = 92;
+    private static final int OVERLAY_BUTTON_WIDTH = 132;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MENU_GAP = 8;
-    private static final int DELETE_BUTTON_WIDTH = 116;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
     private static final double WHEEL_ZOOM_STEP = 1.12;
@@ -30,6 +29,8 @@ public class ZoomableImagePanel extends JPanel {
     private static final int WHEEL_ZOOM_SAVE_DELAY_MS = 250;
 
     private final JButton displayModeButton = new JButton("Fullsize");
+    private final JButton previousButton = new JButton("Vorheriges");
+    private final JButton nextButton = new JButton("Nächstes");
     private final JButton resetButton = new JButton("Reset");
     private final JButton fullSizeButton = new JButton("Full size Zoom");
     private final JButton deleteButton = new JButton("Bild löschen");
@@ -59,6 +60,18 @@ public class ZoomableImagePanel extends JPanel {
         displayModeButton.setFocusable(false);
         displayModeButton.setVisible(false);
         displayModeButton.addActionListener(e -> setDisplayFullSize(!displayFullSize));
+        previousButton.setFocusable(false);
+        previousButton.setVisible(false);
+        previousButton.addActionListener(e -> {
+            EventBus.get().publish(new UserKeyboardEvent(UserCommand.LEFT));
+            showOverlayTemporarily();
+        });
+        nextButton.setFocusable(false);
+        nextButton.setVisible(false);
+        nextButton.addActionListener(e -> {
+            EventBus.get().publish(new UserKeyboardEvent(UserCommand.RIGHT));
+            showOverlayTemporarily();
+        });
 
         resetButton.setFocusable(false);
         resetButton.setVisible(false);
@@ -81,6 +94,10 @@ public class ZoomableImagePanel extends JPanel {
                 showOverlayTemporarily();
             }
         };
+        previousButton.addMouseListener(buttonMouseHandler);
+        previousButton.addMouseMotionListener(buttonMouseHandler);
+        nextButton.addMouseListener(buttonMouseHandler);
+        nextButton.addMouseMotionListener(buttonMouseHandler);
         displayModeButton.addMouseListener(buttonMouseHandler);
         displayModeButton.addMouseMotionListener(buttonMouseHandler);
         resetButton.addMouseListener(buttonMouseHandler);
@@ -89,6 +106,8 @@ public class ZoomableImagePanel extends JPanel {
         fullSizeButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
+        add(previousButton);
+        add(nextButton);
         add(displayModeButton);
         add(resetButton);
         add(fullSizeButton);
@@ -256,6 +275,8 @@ public class ZoomableImagePanel extends JPanel {
     private void setOverlayVisible(boolean visible) {
         overlayVisible = visible;
         boolean hasZoom = getActiveZoom() != null;
+        previousButton.setVisible(visible && file != null);
+        nextButton.setVisible(visible && file != null);
         displayModeButton.setVisible(visible && hasZoom);
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
@@ -450,28 +471,38 @@ public class ZoomableImagePanel extends JPanel {
     @Override
     public void doLayout() {
         super.doLayout();
-        displayModeButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - DISPLAY_MODE_BUTTON_WIDTH - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 3 - MENU_MARGIN),
-                MENU_MARGIN,
-                DISPLAY_MODE_BUTTON_WIDTH,
+        Dimension menuSize = getOverlayMenuSize();
+        int x = Math.max(MENU_MARGIN, getWidth() - menuSize.width - MENU_MARGIN);
+        int y = MENU_MARGIN;
+        previousButton.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
+        nextButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        displayModeButton.setBounds(x, y, OVERLAY_BUTTON_WIDTH, MENU_HEIGHT);
         resetButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
-                MENU_MARGIN,
-                RESET_BUTTON_WIDTH,
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y,
+                OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         fullSizeButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - FULL_SIZE_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP - MENU_MARGIN),
-                MENU_MARGIN,
-                FULL_SIZE_BUTTON_WIDTH,
+                x,
+                y + MENU_HEIGHT + MENU_GAP,
+                OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         deleteButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - DELETE_BUTTON_WIDTH - MENU_MARGIN),
-                MENU_MARGIN,
-                DELETE_BUTTON_WIDTH,
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + MENU_HEIGHT + MENU_GAP,
+                OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         int confirmWidth = Math.min(360, Math.max(260, getWidth() - 80));
@@ -482,6 +513,29 @@ public class ZoomableImagePanel extends JPanel {
                 confirmWidth,
                 confirmHeight
         );
+    }
+
+    private Dimension getOverlayMenuSize() {
+        int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
+        int height = MENU_HEIGHT * 3 + MENU_GAP * 2;
+        return new Dimension(width, height);
+    }
+
+    private Rectangle getVisibleMenuBounds() {
+        JButton[] buttons = {
+                previousButton,
+                nextButton,
+                displayModeButton,
+                resetButton,
+                fullSizeButton,
+                deleteButton
+        };
+        Rectangle result = null;
+        for (JButton button : buttons) {
+            if (!button.isVisible()) continue;
+            result = result == null ? button.getBounds() : result.union(button.getBounds());
+        }
+        return result;
     }
 
     @Override
@@ -530,25 +584,10 @@ public class ZoomableImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!displayModeButton.isVisible() && !resetButton.isVisible() && !fullSizeButton.isVisible() && !deleteButton.isVisible()) return;
-        int x = displayModeButton.isVisible() ? displayModeButton.getX() : resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
-        int y = displayModeButton.isVisible() ? displayModeButton.getY() : resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
-        int right = Math.max(
-                Math.max(
-                        displayModeButton.getX() + displayModeButton.getWidth(),
-                        Math.max(resetButton.getX() + resetButton.getWidth(), fullSizeButton.getX() + fullSizeButton.getWidth())
-                ),
-                deleteButton.getX() + deleteButton.getWidth()
-        );
-        int bottom = Math.max(
-                Math.max(
-                        displayModeButton.getY() + displayModeButton.getHeight(),
-                        Math.max(resetButton.getY() + resetButton.getHeight(), fullSizeButton.getY() + fullSizeButton.getHeight())
-                ),
-                deleteButton.getY() + deleteButton.getHeight()
-        );
+        Rectangle bounds = getVisibleMenuBounds();
+        if (bounds == null) return;
         g2.setColor(new Color(0, 0, 0, 120));
-        g2.fillRoundRect(x - 6, y - 6, right - x + 12, bottom - y + 12, 8, 8);
+        g2.fillRoundRect(bounds.x - 6, bounds.y - 6, bounds.width + 12, bounds.height + 12, 8, 8);
     }
 
     private void paintZoomMarker(Graphics2D g2) {
