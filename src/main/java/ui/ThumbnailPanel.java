@@ -54,6 +54,7 @@ public class ThumbnailPanel extends JPanel {
     private JLabel selectedLabel = null;
 
     private final JScrollPane scrollPane;
+    private final InitialLoadOverlay initialLoadOverlay = new InitialLoadOverlay();
 
     private final MouseListener mouseListener;
 
@@ -701,6 +702,7 @@ public class ThumbnailPanel extends JPanel {
         previewProgressLoaded = 0;
         previewProgressTotal = mediaFiles.size();
         rebuildThumbnailCacheIndex();
+        updateInitialLoadOverlay(0, mediaFiles.size());
 
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
@@ -755,7 +757,13 @@ public class ThumbnailPanel extends JPanel {
             }
 
             int initialFrameCount = type == MEDIA_TYPE.IMAGE ? ANIMATION_FRAMES_PER_THUMBNAIL : INITIAL_VIDEO_THUMBNAIL_FRAMES;
-            CompletableFuture.supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, initialFrameCount), Controller.getInstance().getExecutorService()).thenAccept(thumbFiles -> {
+            CompletableFuture
+                    .supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, initialFrameCount), Controller.getInstance().getExecutorService())
+                    .exceptionally(ex -> {
+                        System.err.println("[ThumbnailPanel] Initial thumbnail failed for " + file.getAbsolutePath() + ": " + ex.getMessage());
+                        return List.of();
+                    })
+                    .thenAccept(thumbFiles -> {
                 if (generation != currentGenerationId) return;
                 int done = processedFiles.incrementAndGet();
                 publishProgress(done, mediaFiles.size());
@@ -1165,7 +1173,17 @@ public class ThumbnailPanel extends JPanel {
     private void publishProgress(int loaded, int total) {
         previewProgressLoaded = loaded;
         previewProgressTotal = total;
+        updateInitialLoadOverlay(loaded, total);
         EventBus.get().publishDirect(new ThumbnailsLoadedEvent(loaded, total));
+    }
+
+    private void updateInitialLoadOverlay(int loaded, int total) {
+        Runnable update = () -> initialLoadOverlay.setProgress(this, loaded, total);
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        } else {
+            SwingUtilities.invokeLater(update);
+        }
     }
 
     private void runOnEdt(Runnable task) {
@@ -1585,6 +1603,118 @@ public class ThumbnailPanel extends JPanel {
 
     private double clamp(double value, double min, double max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static class InitialLoadOverlay extends JComponent {
+        private static final int STALE_PROGRESS_HIDE_DELAY_MS = 1000;
+        private static final int PAINT_THROTTLE_MS = 100;
+        private int loaded;
+        private int total;
+        private int visibleLoaded;
+        private long lastProgressChangeMillis;
+        private long lastPaintMillis;
+        private final Timer staleProgressTimer;
+
+        InitialLoadOverlay() {
+            setOpaque(false);
+            addMouseListener(new MouseAdapter() {
+            });
+            addMouseMotionListener(new MouseMotionAdapter() {
+            });
+            staleProgressTimer = new Timer(200, e -> hideIfProgressIsStale());
+            staleProgressTimer.setRepeats(true);
+        }
+
+        void setProgress(Component owner, int loaded, int total) {
+            JRootPane rootPane = SwingUtilities.getRootPane(owner);
+            if (rootPane != null && rootPane.getGlassPane() != this) {
+                rootPane.setGlassPane(this);
+            }
+
+            int safeTotal = Math.max(0, total);
+            int safeLoaded = Math.max(0, loaded);
+            if (safeTotal != this.total || safeLoaded == 0) {
+                visibleLoaded = 0;
+            }
+            visibleLoaded = Math.max(visibleLoaded, safeLoaded);
+
+            if (visibleLoaded != this.loaded) {
+                lastProgressChangeMillis = System.currentTimeMillis();
+            }
+            this.loaded = visibleLoaded;
+            this.total = safeTotal;
+            setVisible(this.total > 0 && this.loaded < this.total);
+            if (isVisible() && !staleProgressTimer.isRunning()) {
+                if (lastProgressChangeMillis == 0) {
+                    lastProgressChangeMillis = System.currentTimeMillis();
+                }
+                staleProgressTimer.start();
+            } else if (!isVisible()) {
+                staleProgressTimer.stop();
+            }
+            long now = System.currentTimeMillis();
+            if (now - lastPaintMillis >= PAINT_THROTTLE_MS || this.loaded >= this.total) {
+                lastPaintMillis = now;
+                repaint();
+            }
+            if (isShowing() && now - lastPaintMillis <= 1) {
+                paintImmediately(0, 0, getWidth(), getHeight());
+            }
+        }
+
+        private void hideIfProgressIsStale() {
+            if (!isVisible()) {
+                staleProgressTimer.stop();
+                return;
+            }
+            if (System.currentTimeMillis() - lastProgressChangeMillis >= STALE_PROGRESS_HIDE_DELAY_MS) {
+                setVisible(false);
+                staleProgressTimer.stop();
+            }
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            if (total <= 0 || loaded >= total) return;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(35, 35, 35, 170));
+            g2.fillRect(0, 0, getWidth(), getHeight());
+
+            int barWidth = Math.max(240, (int) (getWidth() * 0.90));
+            barWidth = Math.min(barWidth, getWidth() - 40);
+            int barHeight = Math.min(200, Math.max(100, getHeight() / 5));
+            int x = (getWidth() - barWidth) / 2;
+            int y = (getHeight() - barHeight) / 2;
+
+            double progress = total == 0 ? 0.0 : Math.min(1.0, loaded / (double) total);
+            int fillWidth = (int) Math.round(barWidth * progress);
+
+            int radius = 12;
+            g2.setColor(new Color(12, 18, 12, 235));
+            g2.fillRoundRect(x, y, barWidth, barHeight, radius, radius);
+
+            Shape oldClip = g2.getClip();
+            g2.clip(new Rectangle(x, y, fillWidth, barHeight));
+            g2.setColor(new Color(62, 255, 0));
+            g2.fillRoundRect(x, y, barWidth, barHeight, radius, radius);
+            g2.setColor(new Color(170, 255, 130, 80));
+            g2.fillRect(x, y, barWidth, Math.max(1, barHeight / 5));
+            g2.setClip(oldClip);
+
+            int segmentWidth = 102;
+            int gapWidth = 4;
+            g2.setColor(new Color(0, 0, 0, 150));
+            for (int sx = x + segmentWidth; sx < x + barWidth; sx += segmentWidth + gapWidth) {
+                g2.fillRect(sx, y + 2, gapWidth, barHeight - 4);
+            }
+
+            g2.setColor(new Color(190, 255, 165));
+            g2.setStroke(new BasicStroke(2f));
+            g2.drawRoundRect(x, y, barWidth, barHeight, radius, radius);
+            g2.dispose();
+        }
     }
 
     private record ThumbnailRenderResult(
