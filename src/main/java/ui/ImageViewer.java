@@ -47,6 +47,7 @@ public class ImageViewer {
 
         Path def = SettingsService.getIntance().loadDefaultDirectoryFromSettingsJson();
         AppState.get().setCurrentDirectory(def);
+        AppState.get().setCurrentFile(SettingsService.getIntance().loadLastSelectedFileForDirectory(def));
 
         thumbnailPanel = new ThumbnailPanel();
         mediaView = MediaView.getInstance();

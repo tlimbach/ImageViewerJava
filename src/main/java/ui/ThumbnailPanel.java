@@ -52,6 +52,7 @@ public class ThumbnailPanel extends JPanel {
     private final static int ANIMATION_DELAY_RECORD = 33;
     public static final int N_THREADS = 4;
     private JLabel selectedLabel = null;
+    private boolean pendingScrollToSelectedThumbnail;
 
     private final JScrollPane scrollPane;
     private final InitialLoadOverlay initialLoadOverlay = new InitialLoadOverlay();
@@ -258,22 +259,45 @@ public class ThumbnailPanel extends JPanel {
         for (AnimatedThumbnail thumb : animatedThumbnails) {
             File thumbFile = (File) thumb.label.getClientProperty("file");
             if (thumbFile != null && thumbFile.equals(current)) {
-
-                if (selectedLabel != null) {
-                    selectedLabel.setBorder(null);
-                }
-
-                selectedLabel = thumb.label;
-                selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
-                myLabel = selectedLabel;
-
-                Rectangle r = selectedLabel.getBounds();
-                Rectangle viewRect = SwingUtilities.convertRectangle(selectedLabel.getParent(), r, scrollPane.getViewport());
-                scrollPane.getViewport().scrollRectToVisible(viewRect);
-
+                selectThumbnailLabel(thumb.label, true);
                 break;
             }
         }
+    }
+
+    private void selectThumbnailLabel(JLabel label, boolean scrollToVisible) {
+        if (label == null) return;
+
+        if (selectedLabel != null && selectedLabel != label) {
+            selectedLabel.setBorder(null);
+        }
+
+        selectedLabel = label;
+        selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+        myLabel = selectedLabel;
+
+        File file = (File) selectedLabel.getClientProperty("file");
+        if (file != null) {
+            AppState.get().setCurrentFile(file);
+            SettingsService.getIntance().storeLastSelectedFile(AppState.get().getCurrentDirectory(), file);
+        }
+
+        if (scrollToVisible) {
+            pendingScrollToSelectedThumbnail = true;
+            scrollSelectedThumbnailToVisible();
+        }
+    }
+
+    private void scrollSelectedThumbnailToVisible() {
+        if (!pendingScrollToSelectedThumbnail || selectedLabel == null || selectedLabel.getParent() == null) return;
+        if (selectedLabel.getWidth() <= 0 || selectedLabel.getHeight() <= 0) return;
+
+        pendingScrollToSelectedThumbnail = false;
+        Rectangle r = selectedLabel.getBounds();
+        Rectangle viewRect = SwingUtilities.convertRectangle(selectedLabel.getParent(), r, scrollPane.getViewport());
+        viewRect.y = Math.max(viewRect.y - 50, 0);
+        viewRect.height += 100;
+        scrollPane.getViewport().scrollRectToVisible(viewRect);
     }
 
     private MouseAdapter createMouseListener() {
@@ -315,11 +339,7 @@ public class ThumbnailPanel extends JPanel {
 
                 prepareThumbnailZoomDrag(label, file, e);
 
-                if (selectedLabel != null) {
-                    selectedLabel.setBorder(null);
-                }
-                selectedLabel = label;
-                selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+                selectThumbnailLabel(label, false);
             }
 
             @Override
@@ -447,6 +467,12 @@ public class ThumbnailPanel extends JPanel {
 
     private List<File> loadImageThumbnail(File imageFile) {
         List<File> result = new ArrayList<>();
+        if (imageFile == null || !imageFile.isFile() || !imageFile.canRead()) {
+            System.err.println("[ThumbnailPanel] Bilddatei nicht lesbar, Thumbnail wird übersprungen: "
+                    + (imageFile == null ? "null" : imageFile.getAbsolutePath()));
+            return result;
+        }
+
         File thumbDir = getThumbnailCacheDir();
         String thumbName = "thumb_" + imageFile.getName() + ".jpg";
         File thumbFile = new File(thumbDir, thumbName);
@@ -471,7 +497,8 @@ public class ThumbnailPanel extends JPanel {
 
                 ImageIO.write(resultImg, "jpg", thumbFile);
             } catch (IOException e) {
-                e.printStackTrace();
+                System.err.println("[ThumbnailPanel] Thumbnail konnte nicht geladen werden: "
+                        + imageFile.getAbsolutePath() + " (" + e.getMessage() + ")");
             }
         }
 
@@ -1301,12 +1328,21 @@ public class ThumbnailPanel extends JPanel {
             panel.add(label, insertAt);
             animatedThumbnails.add(insertAt, aNail);
             requestThumbnailUiRefresh(panel);
+            selectRestoredThumbnailIfNeeded(label, file);
 
             if (animatedThumbnails.size() < 20) {
                 aNail.start();
                 aNail.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
             }
         }
+    }
+
+    private void selectRestoredThumbnailIfNeeded(JLabel label, File file) {
+        File current = AppState.get().getCurrentFile();
+        if (current == null || file == null || !current.getName().equals(file.getName())) return;
+
+        selectThumbnailLabel(label, true);
+        EventBus.get().publish(new CurrentlySelectedFileEvent(file));
     }
 
     private int findThumbnailInsertIndex(File file, Map<String, Integer> displayOrder) {
@@ -1333,6 +1369,9 @@ public class ThumbnailPanel extends JPanel {
 
         panel.revalidate();
         panel.repaint();
+        if (pendingScrollToSelectedThumbnail) {
+            SwingUtilities.invokeLater(this::scrollSelectedThumbnailToVisible);
+        }
         updateVisibleThumbnails();
     }
 

@@ -1,6 +1,7 @@
 package service;
 
 import event.CurrentDirectoryChangedEvent;
+import event.CurrentlySelectedFileEvent;
 import model.AppState;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -17,10 +18,16 @@ import java.util.List;
 public class SettingsService {
     private static SettingsService instance = new SettingsService();
     private static final int DIRECTORY_HISTORY_LIMIT = 10;
+    private static final String LAST_SELECTED_FILES_KEY = "lastSelectedFiles";
 
     private SettingsService() {
         EventBus.get().register(CurrentDirectoryChangedEvent.class, c -> {
-            storeDirectory(AppState.get().getCurrentDirectory());
+            Path currentDirectory = AppState.get().getCurrentDirectory();
+            storeDirectory(currentDirectory);
+            AppState.get().setCurrentFile(loadLastSelectedFileForDirectory(currentDirectory));
+        });
+        EventBus.get().register(CurrentlySelectedFileEvent.class, e -> {
+            storeLastSelectedFile(AppState.get().getCurrentDirectory(), e.file());
         });
     }
 
@@ -78,6 +85,35 @@ public class SettingsService {
         JSONObject json = loadRootSettings();
         json.put("defaultDirectory", dir.toString());
         json.put("directoryHistory", updatedHistory(json.optJSONArray("directoryHistory"), dir));
+        saveRootSettings(json);
+    }
+
+    public File loadLastSelectedFileForDirectory(Path dir) {
+        if (dir == null) return null;
+        JSONObject json = loadRootSettings();
+        JSONObject selections = json.optJSONObject(LAST_SELECTED_FILES_KEY);
+        if (selections == null) return null;
+
+        String fileName = selections.optString(normalizePath(dir), null);
+        if (fileName == null || fileName.isBlank()) return null;
+
+        File file = dir.resolve(fileName).toFile();
+        if (!file.isFile()) return null;
+        if (!Controller.isImageFile(file) && !Controller.isVideoFile(file)) return null;
+        return file;
+    }
+
+    public void storeLastSelectedFile(Path dir, File file) {
+        if (dir == null || file == null) return;
+
+        JSONObject json = loadRootSettings();
+        JSONObject selections = json.optJSONObject(LAST_SELECTED_FILES_KEY);
+        if (selections == null) {
+            selections = new JSONObject();
+        }
+
+        selections.put(normalizePath(dir), file.getName());
+        json.put(LAST_SELECTED_FILES_KEY, selections);
         saveRootSettings(json);
     }
 
