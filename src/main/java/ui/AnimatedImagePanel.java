@@ -1,12 +1,13 @@
 package ui;
 
-import event.ImageZoomPreviewEvent;
 import event.TagsChangedEvent;
+import model.AppState;
 import service.Controller;
 import service.EventBus;
 import service.ImageZoomHandler;
 import service.TagHandler;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -15,6 +16,12 @@ import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -32,13 +39,10 @@ public class AnimatedImagePanel extends JPanel {
     private static final double ZOOM_SPEED = 0.003;
     private static final double PAN_SPEED_X = 0.005;
     private static final double PAN_SPEED_Y = 0.005;
-    private static final int RESET_BUTTON_WIDTH = 96;
-    private static final int SPECIAL_TAG_BUTTON_WIDTH = 150;
-    private static final int DISPLAY_MODE_BUTTON_WIDTH = 92;
+    private static final int OVERLAY_BUTTON_WIDTH = 150;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MENU_GAP = 8;
-    private static final int DELETE_BUTTON_WIDTH = 116;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
     private static final String SPECIAL_TAG = "Ach Du Scheisse";
@@ -53,10 +57,12 @@ public class AnimatedImagePanel extends JPanel {
     private final File file;
     private final Runnable onInteractionStarted;
     private final Runnable onInteractionFinished;
-    private final JButton displayModeButton = new JButton("Fullsize");
-    private final JButton resetButton = new JButton("Reset");
-    private final JButton specialTagButton = new JButton(SPECIAL_TAG);
-    private final JButton deleteButton = new JButton("Bild löschen");
+    private final OverlayButton displayModeButton = new OverlayButton("Fullsize");
+    private final OverlayButton resetButton = new OverlayButton("Reset");
+    private final OverlayButton specialTagButton = new OverlayButton(SPECIAL_TAG);
+    private final OverlayButton cropButton = new OverlayButton("Neues Bild");
+    private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
+    private final OverlayButton closeButton = new OverlayButton("Schließen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
     private ImageZoomHandler.ZoomSelection zoomSelection;
@@ -99,7 +105,7 @@ public class AnimatedImagePanel extends JPanel {
         setDoubleBuffered(true);
         installResetButton();
         installMouseSelection();
-        overlayHideTimer = new Timer(1000, e -> setOverlayVisible(false));
+        overlayHideTimer = new Timer(1000, e -> hideOverlayIfPointerIsAway());
         overlayHideTimer.setRepeats(false);
 
         animationTimer = new Timer(15, e -> {
@@ -137,10 +143,18 @@ public class AnimatedImagePanel extends JPanel {
             addSpecialTagToCurrentImage();
             finishInteraction();
         });
+        cropButton.setFocusable(false);
+        cropButton.setVisible(false);
+        cropButton.setToolTipText("Neues Bild aus Auswahl");
+        cropButton.addActionListener(e -> saveZoomSelectionAsNewImage());
         deleteButton.setFocusable(false);
         deleteButton.setVisible(false);
         deleteButton.setToolTipText("Bild löschen");
         deleteButton.addActionListener(e -> deleteCurrentImage());
+        closeButton.setFocusable(false);
+        closeButton.setVisible(false);
+        closeButton.setToolTipText("Media View schließen");
+        closeButton.addActionListener(e -> closeMediaView());
         MouseAdapter buttonMouseHandler = new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
@@ -158,12 +172,18 @@ public class AnimatedImagePanel extends JPanel {
         resetButton.addMouseMotionListener(buttonMouseHandler);
         specialTagButton.addMouseListener(buttonMouseHandler);
         specialTagButton.addMouseMotionListener(buttonMouseHandler);
+        cropButton.addMouseListener(buttonMouseHandler);
+        cropButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
+        closeButton.addMouseListener(buttonMouseHandler);
+        closeButton.addMouseMotionListener(buttonMouseHandler);
         add(displayModeButton);
         add(resetButton);
         add(specialTagButton);
+        add(cropButton);
         add(deleteButton);
+        add(closeButton);
         add(deleteConfirmationOverlay);
         setComponentZOrder(deleteConfirmationOverlay, 0);
     }
@@ -247,6 +267,10 @@ public class AnimatedImagePanel extends JPanel {
         JMenuItem deleteItem = new JMenuItem("Bild löschen");
         deleteItem.addActionListener(a -> deleteCurrentImage());
         popup.add(deleteItem);
+        JMenuItem cropItem = new JMenuItem("Neues Bild aus Auswahl");
+        cropItem.setEnabled(zoomSelection != null);
+        cropItem.addActionListener(a -> saveZoomSelectionAsNewImage());
+        popup.add(cropItem);
         popup.show(e.getComponent(), e.getX(), e.getY());
     }
 
@@ -282,6 +306,29 @@ public class AnimatedImagePanel extends JPanel {
         overlayHideTimer.restart();
     }
 
+    private void hideOverlayIfPointerIsAway() {
+        if (isPointerOverOverlayMenu()) {
+            overlayHideTimer.restart();
+            return;
+        }
+        setOverlayVisible(false);
+    }
+
+    private boolean isPointerOverOverlayMenu() {
+        if (!overlayVisible || !isShowing()) return false;
+
+        Rectangle bounds = getVisibleMenuBounds();
+        if (bounds == null) return false;
+
+        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
+        if (pointerInfo == null) return false;
+
+        Point point = pointerInfo.getLocation();
+        SwingUtilities.convertPointFromScreen(point, this);
+        bounds.grow(6, 6);
+        return bounds.contains(point);
+    }
+
     private void addSpecialTagToCurrentImage() {
         if (file == null) return;
 
@@ -303,13 +350,17 @@ public class AnimatedImagePanel extends JPanel {
     private void setOverlayVisible(boolean visible) {
         overlayVisible = visible;
         boolean hasZoom = zoomSelection != null;
-        displayModeButton.setVisible(visible && hasZoom);
+        displayModeButton.setVisible(visible && file != null);
+        displayModeButton.setEnabled(hasZoom);
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
         specialTagButton.setVisible(visible && file != null);
-        specialTagButton.setForeground(hasSpecialTag() ? Color.LIGHT_GRAY : Color.BLACK);
+        specialTagButton.setTextColor(hasSpecialTag() ? Color.LIGHT_GRAY : Color.BLACK);
+        cropButton.setVisible(visible && file != null);
+        cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
+        closeButton.setVisible(visible && file != null);
         repaint();
     }
 
@@ -322,6 +373,12 @@ public class AnimatedImagePanel extends JPanel {
 
     private void updateDisplayModeButton() {
         displayModeButton.setText(displayFullSize ? "cropped" : "Fullsize");
+    }
+
+    private void closeMediaView() {
+        setOverlayVisible(false);
+        Controller.getInstance().getControlPanel().getSlideshowManager().stop();
+        MediaView.getInstance().stopAndHide();
     }
 
     private Rectangle createRectangle(Point a, Point b) {
@@ -353,6 +410,110 @@ public class AnimatedImagePanel extends JPanel {
         ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
         displayFullSize = false;
         setOverlayVisible(true);
+    }
+
+    private void saveZoomSelectionAsNewImage() {
+        if (file == null || zoomSelection == null) return;
+
+        Rectangle2D viewRect = getZoomViewRect(zoomSelection);
+        Rectangle cropRect = new Rectangle(
+                clamp((int) Math.floor(viewRect.getX()), 0, image.getWidth()),
+                clamp((int) Math.floor(viewRect.getY()), 0, image.getHeight()),
+                clamp((int) Math.ceil(viewRect.getWidth()), 1, image.getWidth()),
+                clamp((int) Math.ceil(viewRect.getHeight()), 1, image.getHeight())
+        );
+        if (cropRect.x + cropRect.width > image.getWidth()) {
+            cropRect.width = image.getWidth() - cropRect.x;
+        }
+        if (cropRect.y + cropRect.height > image.getHeight()) {
+            cropRect.height = image.getHeight() - cropRect.y;
+        }
+        if (cropRect.width <= 0 || cropRect.height <= 0) return;
+
+        beginInteraction();
+        cropButton.setEnabled(false);
+        File sourceFile = file;
+        BufferedImage sourceImage = image;
+        Controller.getInstance().getExecutorService().submit(() -> {
+            try {
+                writeCroppedImage(sourceFile, sourceImage, cropRect);
+                ImageZoomHandler.getInstance().resetZoomForFile(sourceFile);
+                AppState.get().setCurrentFile(sourceFile);
+                Controller.getInstance().getThumbnailPanel().reloadDirectory();
+                SwingUtilities.invokeLater(() -> Controller.getInstance().handleMedia(sourceFile, false));
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        this,
+                        "Bild konnte nicht gespeichert werden:\n" + ex.getMessage(),
+                        "Neues Bild aus Auswahl",
+                        JOptionPane.ERROR_MESSAGE
+                ));
+            } finally {
+                SwingUtilities.invokeLater(() -> {
+                    cropButton.setEnabled(zoomSelection != null);
+                    showOverlayTemporarily();
+                    finishInteraction();
+                });
+            }
+        });
+    }
+
+    private File writeCroppedImage(File sourceFile, BufferedImage sourceImage, Rectangle cropRect) throws IOException {
+        BufferedImage crop = sourceImage.getSubimage(cropRect.x, cropRect.y, cropRect.width, cropRect.height);
+        String format = crop.getColorModel().hasAlpha() ? "png" : "jpg";
+        Path targetPath = uniqueCropPath(sourceFile.toPath(), format);
+        BufferedImage output = crop;
+        if ("jpg".equals(format)) {
+            output = new BufferedImage(crop.getWidth(), crop.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = output.createGraphics();
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, output.getWidth(), output.getHeight());
+            g.drawImage(crop, 0, 0, null);
+            g.dispose();
+        }
+
+        if (!ImageIO.write(output, format, targetPath.toFile())) {
+            throw new IOException("Kein ImageIO-Writer fuer " + format + " gefunden.");
+        }
+        placeCropNextToOriginal(sourceFile.toPath(), targetPath);
+        return targetPath.toFile();
+    }
+
+    private Path uniqueCropPath(Path sourcePath, String extension) {
+        Path parent = sourcePath.getParent();
+        String sourceName = sourcePath.getFileName().toString();
+        int dotIndex = sourceName.lastIndexOf('.');
+        String baseName = dotIndex > 0 ? sourceName.substring(0, dotIndex) : sourceName;
+
+        int counter = 0;
+        Path candidate;
+        do {
+            String suffix = counter == 0 ? "_ausschnitt" : "_ausschnitt_" + counter;
+            candidate = parent.resolve(baseName + suffix + "." + extension);
+            counter++;
+        } while (Files.exists(candidate));
+        return candidate;
+    }
+
+    private void placeCropNextToOriginal(Path sourcePath, Path cropPath) {
+        try {
+            BasicFileAttributes sourceAttributes = Files.readAttributes(sourcePath, BasicFileAttributes.class);
+            FileTime creationTime = sourceAttributes.creationTime();
+            FileTime modifiedTime = sourceAttributes.lastModifiedTime();
+            BasicFileAttributeView view = Files.getFileAttributeView(cropPath, BasicFileAttributeView.class);
+            if (view != null) {
+                view.setTimes(modifiedTime, sourceAttributes.lastAccessTime(), creationTime);
+            } else {
+                Files.setLastModifiedTime(cropPath, modifiedTime);
+            }
+        } catch (IOException e) {
+            try {
+                Files.setLastModifiedTime(cropPath, Files.getLastModifiedTime(sourcePath));
+            } catch (IOException ignored) {
+                // Die Sortierung gruppiert _ausschnitt-Dateien trotzdem neben dem Original.
+            }
+        }
     }
 
     private Rectangle toImageRectangle(Rectangle panelRect, Rectangle2D imageBounds) {
@@ -466,25 +627,10 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void paintOverlayBackground(Graphics2D g2) {
-        if (!displayModeButton.isVisible() && !resetButton.isVisible() && !specialTagButton.isVisible() && !deleteButton.isVisible()) return;
-        int x = displayModeButton.isVisible() ? displayModeButton.getX() : resetButton.isVisible() ? resetButton.getX() : deleteButton.getX();
-        int y = displayModeButton.isVisible() ? displayModeButton.getY() : resetButton.isVisible() ? resetButton.getY() : deleteButton.getY();
-        int right = Math.max(
-                Math.max(
-                        displayModeButton.getX() + displayModeButton.getWidth(),
-                        Math.max(resetButton.getX() + resetButton.getWidth(), specialTagButton.getX() + specialTagButton.getWidth())
-                ),
-                deleteButton.getX() + deleteButton.getWidth()
-        );
-        int bottom = Math.max(
-                Math.max(
-                        displayModeButton.getY() + displayModeButton.getHeight(),
-                        Math.max(resetButton.getY() + resetButton.getHeight(), specialTagButton.getY() + specialTagButton.getHeight())
-                ),
-                deleteButton.getY() + deleteButton.getHeight()
-        );
+        Rectangle bounds = getVisibleMenuBounds();
+        if (bounds == null) return;
         g2.setColor(new Color(0, 0, 0, 120));
-        g2.fillRoundRect(x - 6, y - 6, right - x + 12, bottom - y + 12, 8, 8);
+        g2.fillRoundRect(bounds.x - 6, bounds.y - 6, bounds.width + 12, bounds.height + 12, 8, 8);
     }
 
     private void paintZoomMarker(Graphics2D g2) {
@@ -537,6 +683,38 @@ public class AnimatedImagePanel extends JPanel {
         return new Rectangle2D.Double(x, y, viewWidth, viewHeight);
     }
 
+    private Rectangle2D getZoomViewRect(ImageZoomHandler.ZoomSelection zoomSelection) {
+        double selectedX = clamp(zoomSelection.x(), 0, 1) * image.getWidth();
+        double selectedY = clamp(zoomSelection.y(), 0, 1) * image.getHeight();
+        double selectedWidth = clamp(zoomSelection.width(), 0, 1) * image.getWidth();
+        double selectedHeight = clamp(zoomSelection.height(), 0, 1) * image.getHeight();
+
+        if (selectedWidth <= 0 || selectedHeight <= 0 || getWidth() <= 0 || getHeight() <= 0) {
+            return new Rectangle2D.Double(0, 0, image.getWidth(), image.getHeight());
+        }
+
+        double viewportAspect = (double) getWidth() / getHeight();
+        double selectedAspect = selectedWidth / selectedHeight;
+        double viewWidth = selectedWidth;
+        double viewHeight = selectedHeight;
+
+        if (selectedAspect < viewportAspect) {
+            viewWidth = selectedHeight * viewportAspect;
+        } else {
+            viewHeight = selectedWidth / viewportAspect;
+        }
+
+        viewWidth = Math.min(viewWidth, image.getWidth());
+        viewHeight = Math.min(viewHeight, image.getHeight());
+
+        double centerX = selectedX + selectedWidth / 2.0;
+        double centerY = selectedY + selectedHeight / 2.0;
+        double x = clamp(centerX - viewWidth / 2.0, 0, image.getWidth() - viewWidth);
+        double y = clamp(centerY - viewHeight / 2.0, 0, image.getHeight() - viewHeight);
+
+        return new Rectangle2D.Double(x, y, viewWidth, viewHeight);
+    }
+
     private int clamp(int value, int min, int max) {
         return Math.max(min, Math.min(max, value));
     }
@@ -548,28 +726,33 @@ public class AnimatedImagePanel extends JPanel {
     @Override
     public void doLayout() {
         super.doLayout();
-        displayModeButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - DISPLAY_MODE_BUTTON_WIDTH - RESET_BUTTON_WIDTH - SPECIAL_TAG_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 3 - MENU_MARGIN),
-                MENU_MARGIN,
-                DISPLAY_MODE_BUTTON_WIDTH,
-                MENU_HEIGHT
-        );
-        resetButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - RESET_BUTTON_WIDTH - SPECIAL_TAG_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP * 2 - MENU_MARGIN),
-                MENU_MARGIN,
-                RESET_BUTTON_WIDTH,
-                MENU_HEIGHT
-        );
+        Dimension menuSize = getOverlayMenuSize();
+        int x = Math.max(MENU_MARGIN, getWidth() - menuSize.width - MENU_MARGIN);
+        int y = MENU_MARGIN;
+        displayModeButton.setBounds(x, y, OVERLAY_BUTTON_WIDTH, MENU_HEIGHT);
+        resetButton.setBounds(x + OVERLAY_BUTTON_WIDTH + MENU_GAP, y, OVERLAY_BUTTON_WIDTH, MENU_HEIGHT);
         specialTagButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - SPECIAL_TAG_BUTTON_WIDTH - DELETE_BUTTON_WIDTH - MENU_GAP - MENU_MARGIN),
-                MENU_MARGIN,
-                SPECIAL_TAG_BUTTON_WIDTH,
+                x,
+                y + MENU_HEIGHT + MENU_GAP,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        cropButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + MENU_HEIGHT + MENU_GAP,
+                OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         deleteButton.setBounds(
-                Math.max(MENU_MARGIN, getWidth() - DELETE_BUTTON_WIDTH - MENU_MARGIN),
-                MENU_MARGIN,
-                DELETE_BUTTON_WIDTH,
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        closeButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         int confirmWidth = Math.min(360, Math.max(260, getWidth() - 80));
@@ -580,6 +763,29 @@ public class AnimatedImagePanel extends JPanel {
                 confirmWidth,
                 confirmHeight
         );
+    }
+
+    private Dimension getOverlayMenuSize() {
+        int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
+        int height = MENU_HEIGHT * 3 + MENU_GAP * 2;
+        return new Dimension(width, height);
+    }
+
+    private Rectangle getVisibleMenuBounds() {
+        JButton[] buttons = {
+                displayModeButton,
+                resetButton,
+                specialTagButton,
+                cropButton,
+                deleteButton,
+                closeButton
+        };
+        Rectangle result = null;
+        for (JButton button : buttons) {
+            if (!button.isVisible()) continue;
+            result = result == null ? button.getBounds() : result.union(button.getBounds());
+        }
+        return result;
     }
 
     @Override

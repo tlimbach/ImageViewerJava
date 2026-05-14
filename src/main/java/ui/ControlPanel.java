@@ -25,6 +25,9 @@ import java.util.List;
 import java.util.Locale;
 
 public class ControlPanel extends JPanel {
+    private static final int DEFAULT_MEDIA_LOAD_LIMIT = 10000;
+    private static final int DEFAULT_SLIDESHOW_DURATION_SECONDS = 25;
+    private static final int DEFAULT_SLIDESHOW_TOTAL_MINUTES = 10;
 
     private final Controller controller = Controller.getInstance();
     private final JLabel lblPosition = new JLabel("----");
@@ -155,6 +158,10 @@ public class ControlPanel extends JPanel {
         });
 
         Integer mediaLoadLimit = AppState.get().getMediaLoadLimit();
+        if (mediaLoadLimit == null) {
+            mediaLoadLimit = DEFAULT_MEDIA_LOAD_LIMIT;
+            AppState.get().setMediaLoadLimit(mediaLoadLimit);
+        }
         txtMediaLimit.setText(mediaLoadLimit == null ? "" : mediaLoadLimit.toString());
         txtMediaLimit.setToolTipText("Maximale Anzahl geladener Medien. Leer = alle.");
         txtMediaLimit.addActionListener(a -> applyMediaLimitFromField());
@@ -327,8 +334,10 @@ public class ControlPanel extends JPanel {
 
     private void addSlideshowControls() {
         txtDuration = new JTextField(3);
+        txtDuration.setText(Integer.toString(DEFAULT_SLIDESHOW_DURATION_SECONDS));
         txtDuration.setToolTipText("Anzeigedauer pro Bild (Sekunden)");
         txtSlideshowTotalMinutes = new JTextField(3);
+        txtSlideshowTotalMinutes.setText(Integer.toString(DEFAULT_SLIDESHOW_TOTAL_MINUTES));
         txtSlideshowTotalMinutes.setToolTipText("Gesamtdauer der Diashow (Minuten)");
         txtSlideshowTotalMinutes.getDocument().addDocumentListener(new DocumentListener() {
             @Override
