@@ -25,7 +25,6 @@ public class ControlPanel extends JPanel {
 
     private final Controller controller = Controller.getInstance();
     private final JLabel lblPosition = new JLabel("----");
-    private final JLabel lblThumbnailsLoadedCount = new JLabel("---------");
     private final JTextField txtTimerangeStart = new JTextField(5);
     private final JTextField txtTimerangeEnde = new JTextField(5);
     private final JTextField txtMediaLimit = new JTextField(5);
@@ -76,18 +75,12 @@ public class ControlPanel extends JPanel {
 //        addBrillenSetup();
         addParalaxeControl();
 
-        add(H.makeHorizontalPanel(lblThumbnailsLoadedCount));
-
         EventBus.get().register(CurrentPlaybackPosEvent.class, e -> {
             setCurrentPlayPosMillis(e.currentMillis(), e.totalMinis());
         });
 
         EventBus.get().register(CurrentlySelectedFileEvent.class, e -> {
             setSelectedFile(e.file());
-        });
-
-        EventBus.get().register(ThumbnailsLoadedEvent.class, e -> {
-            setThumbnailsLoaded(e.loaded(), e.total());
         });
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
@@ -618,26 +611,6 @@ public class ControlPanel extends JPanel {
             }
             lblPosition.setText(time);
         });
-    }
-
-    public void setThumbnailsLoaded(int loaded, int total) {
-        setThumbnailProgressText("Vorschauen geladen: " + loaded + " / " + total);
-    }
-
-    private void setThumbnailProgressText(String text) {
-        Runnable update = () -> {
-            lblThumbnailsLoadedCount.setText(text);
-            lblThumbnailsLoadedCount.revalidate();
-            lblThumbnailsLoadedCount.paintImmediately(0, 0,
-                    lblThumbnailsLoadedCount.getWidth(),
-                    lblThumbnailsLoadedCount.getHeight());
-        };
-
-        if (SwingUtilities.isEventDispatchThread()) {
-            update.run();
-        } else {
-            SwingUtilities.invokeLater(update);
-        }
     }
 
     public void setSelectedFile(File file) {

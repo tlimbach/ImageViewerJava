@@ -3,9 +3,12 @@ package ui;
 import event.ImageZoomPreviewEvent;
 import event.UserCommand;
 import event.UserKeyboardEvent;
+import model.AppState;
+import service.Controller;
 import service.EventBus;
 import service.ImageZoomHandler;
 
+import javax.imageio.ImageIO;
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
@@ -15,10 +18,16 @@ import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributeView;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.FileTime;
 
 public class ZoomableImagePanel extends JPanel {
 
-    private static final int OVERLAY_BUTTON_WIDTH = 132;
+    private static final int OVERLAY_BUTTON_WIDTH = 150;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
     private static final int MENU_GAP = 8;
@@ -33,6 +42,7 @@ public class ZoomableImagePanel extends JPanel {
     private final JButton nextButton = new JButton("Nächstes");
     private final JButton resetButton = new JButton("Reset");
     private final JButton fullSizeButton = new JButton("Full size Zoom");
+    private final JButton cropButton = new JButton("Neues Bild");
     private final JButton deleteButton = new JButton("Bild löschen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
@@ -79,6 +89,10 @@ public class ZoomableImagePanel extends JPanel {
         fullSizeButton.setFocusable(false);
         fullSizeButton.setVisible(false);
         fullSizeButton.addActionListener(e -> setFullSizeZoom());
+        cropButton.setFocusable(false);
+        cropButton.setVisible(false);
+        cropButton.setToolTipText("Neues Bild aus Auswahl");
+        cropButton.addActionListener(e -> saveZoomSelectionAsNewImage());
         deleteButton.setFocusable(false);
         deleteButton.setVisible(false);
         deleteButton.setToolTipText("Bild löschen");
@@ -104,6 +118,8 @@ public class ZoomableImagePanel extends JPanel {
         resetButton.addMouseMotionListener(buttonMouseHandler);
         fullSizeButton.addMouseListener(buttonMouseHandler);
         fullSizeButton.addMouseMotionListener(buttonMouseHandler);
+        cropButton.addMouseListener(buttonMouseHandler);
+        cropButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
         deleteButton.addMouseMotionListener(buttonMouseHandler);
         add(previousButton);
@@ -111,11 +127,12 @@ public class ZoomableImagePanel extends JPanel {
         add(displayModeButton);
         add(resetButton);
         add(fullSizeButton);
+        add(cropButton);
         add(deleteButton);
         add(deleteConfirmationOverlay);
         setComponentZOrder(deleteConfirmationOverlay, 0);
 
-        overlayHideTimer = new Timer(1000, e -> setOverlayVisible(false));
+        overlayHideTimer = new Timer(1000, e -> hideOverlayIfPointerIsAway());
         overlayHideTimer.setRepeats(false);
         wheelZoomSaveTimer = new Timer(WHEEL_ZOOM_SAVE_DELAY_MS, e -> persistPendingWheelZoom());
         wheelZoomSaveTimer.setRepeats(false);
@@ -264,12 +281,39 @@ public class ZoomableImagePanel extends JPanel {
         JMenuItem deleteItem = new JMenuItem("Bild löschen");
         deleteItem.addActionListener(a -> deleteCurrentImage());
         popup.add(deleteItem);
+        JMenuItem cropItem = new JMenuItem("Neues Bild aus Auswahl");
+        cropItem.setEnabled(getActiveZoom() != null);
+        cropItem.addActionListener(a -> saveZoomSelectionAsNewImage());
+        popup.add(cropItem);
         popup.show(e.getComponent(), e.getX(), e.getY());
     }
 
     private void showOverlayTemporarily() {
         setOverlayVisible(image != null);
         overlayHideTimer.restart();
+    }
+
+    private void hideOverlayIfPointerIsAway() {
+        if (isPointerOverOverlayMenu()) {
+            overlayHideTimer.restart();
+            return;
+        }
+        setOverlayVisible(false);
+    }
+
+    private boolean isPointerOverOverlayMenu() {
+        if (!overlayVisible || !isShowing()) return false;
+
+        Rectangle bounds = getVisibleMenuBounds();
+        if (bounds == null) return false;
+
+        PointerInfo pointerInfo = MouseInfo.getPointerInfo();
+        if (pointerInfo == null) return false;
+
+        Point point = pointerInfo.getLocation();
+        SwingUtilities.convertPointFromScreen(point, this);
+        bounds.grow(6, 6);
+        return bounds.contains(point);
     }
 
     private void setOverlayVisible(boolean visible) {
@@ -282,6 +326,8 @@ public class ZoomableImagePanel extends JPanel {
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
         fullSizeButton.setVisible(visible && file != null);
+        cropButton.setVisible(visible && file != null);
+        cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
         repaint();
     }
@@ -317,6 +363,114 @@ public class ZoomableImagePanel extends JPanel {
         clearPendingWheelZoom();
         ImageZoomHandler.getInstance().setZoomForFile(file, zoom);
         displayFullSize = false;
+    }
+
+    private void saveZoomSelectionAsNewImage() {
+        if (image == null || file == null) return;
+
+        ImageZoomHandler.ZoomSelection zoom = getActiveZoom();
+        if (zoom == null) return;
+
+        clearPendingWheelZoom();
+        Rectangle2D viewRect = getZoomViewRect(zoom);
+        Rectangle cropRect = new Rectangle(
+                clamp((int) Math.floor(viewRect.getX()), 0, image.getWidth()),
+                clamp((int) Math.floor(viewRect.getY()), 0, image.getHeight()),
+                clamp((int) Math.ceil(viewRect.getWidth()), 1, image.getWidth()),
+                clamp((int) Math.ceil(viewRect.getHeight()), 1, image.getHeight())
+        );
+        if (cropRect.x + cropRect.width > image.getWidth()) {
+            cropRect.width = image.getWidth() - cropRect.x;
+        }
+        if (cropRect.y + cropRect.height > image.getHeight()) {
+            cropRect.height = image.getHeight() - cropRect.y;
+        }
+        if (cropRect.width <= 0 || cropRect.height <= 0) return;
+
+        cropButton.setEnabled(false);
+        File sourceFile = file;
+        BufferedImage sourceImage = image;
+        Controller.getInstance().getExecutorService().submit(() -> {
+            try {
+                writeCroppedImage(sourceFile, sourceImage, cropRect);
+                ImageZoomHandler.getInstance().resetZoomForFile(sourceFile);
+                AppState.get().setCurrentFile(sourceFile);
+                Controller.getInstance().getThumbnailPanel().reloadDirectory();
+                SwingUtilities.invokeLater(() -> {
+                    Controller.getInstance().handleMedia(sourceFile, false);
+                });
+            } catch (IOException ex) {
+                ex.printStackTrace();
+                SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
+                        this,
+                        "Bild konnte nicht gespeichert werden:\n" + ex.getMessage(),
+                        "Neues Bild aus Auswahl",
+                        JOptionPane.ERROR_MESSAGE
+                ));
+            } finally {
+                SwingUtilities.invokeLater(() -> {
+                    cropButton.setEnabled(getActiveZoom() != null);
+                    showOverlayTemporarily();
+                });
+            }
+        });
+    }
+
+    private File writeCroppedImage(File sourceFile, BufferedImage sourceImage, Rectangle cropRect) throws IOException {
+        BufferedImage crop = sourceImage.getSubimage(cropRect.x, cropRect.y, cropRect.width, cropRect.height);
+        String format = crop.getColorModel().hasAlpha() ? "png" : "jpg";
+        Path targetPath = uniqueCropPath(sourceFile.toPath(), format);
+        BufferedImage output = crop;
+        if ("jpg".equals(format)) {
+            output = new BufferedImage(crop.getWidth(), crop.getHeight(), BufferedImage.TYPE_INT_RGB);
+            Graphics2D g = output.createGraphics();
+            g.setColor(Color.BLACK);
+            g.fillRect(0, 0, output.getWidth(), output.getHeight());
+            g.drawImage(crop, 0, 0, null);
+            g.dispose();
+        }
+
+        if (!ImageIO.write(output, format, targetPath.toFile())) {
+            throw new IOException("Kein ImageIO-Writer fuer " + format + " gefunden.");
+        }
+        placeCropNextToOriginal(sourceFile.toPath(), targetPath);
+        return targetPath.toFile();
+    }
+
+    private Path uniqueCropPath(Path sourcePath, String extension) {
+        Path parent = sourcePath.getParent();
+        String sourceName = sourcePath.getFileName().toString();
+        int dotIndex = sourceName.lastIndexOf('.');
+        String baseName = dotIndex > 0 ? sourceName.substring(0, dotIndex) : sourceName;
+
+        int counter = 0;
+        Path candidate;
+        do {
+            String suffix = counter == 0 ? "_ausschnitt" : "_ausschnitt_" + counter;
+            candidate = parent.resolve(baseName + suffix + "." + extension);
+            counter++;
+        } while (Files.exists(candidate));
+        return candidate;
+    }
+
+    private void placeCropNextToOriginal(Path sourcePath, Path cropPath) {
+        try {
+            BasicFileAttributes sourceAttributes = Files.readAttributes(sourcePath, BasicFileAttributes.class);
+            FileTime creationTime = sourceAttributes.creationTime();
+            FileTime modifiedTime = sourceAttributes.lastModifiedTime();
+            BasicFileAttributeView view = Files.getFileAttributeView(cropPath, BasicFileAttributeView.class);
+            if (view != null) {
+                view.setTimes(modifiedTime, sourceAttributes.lastAccessTime(), creationTime);
+            } else {
+                Files.setLastModifiedTime(cropPath, modifiedTime);
+            }
+        } catch (IOException e) {
+            try {
+                Files.setLastModifiedTime(cropPath, Files.getLastModifiedTime(sourcePath));
+            } catch (IOException ignored) {
+                // Die Sortierung gruppiert _ausschnitt-Dateien trotzdem neben dem Original.
+            }
+        }
     }
 
     private boolean tryStartPan(MouseEvent e) {
@@ -499,9 +653,15 @@ public class ZoomableImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        deleteButton.setBounds(
+        cropButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
                 y + MENU_HEIGHT + MENU_GAP,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        deleteButton.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 3,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -517,7 +677,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private Dimension getOverlayMenuSize() {
         int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
-        int height = MENU_HEIGHT * 3 + MENU_GAP * 2;
+        int height = MENU_HEIGHT * 4 + MENU_GAP * 3;
         return new Dimension(width, height);
     }
 
@@ -528,6 +688,7 @@ public class ZoomableImagePanel extends JPanel {
                 displayModeButton,
                 resetButton,
                 fullSizeButton,
+                cropButton,
                 deleteButton
         };
         Rectangle result = null;

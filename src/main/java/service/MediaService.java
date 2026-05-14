@@ -52,9 +52,55 @@ public class MediaService {
 
     private static Comparator<File> creationDateDescendingComparator() {
         return Comparator
-                .comparingLong(MediaService::creationTimeMillis)
+                .comparingLong(MediaService::sortCreationTimeMillis)
                 .reversed()
+                .thenComparing(MediaService::sortGroupName, String.CASE_INSENSITIVE_ORDER)
+                .thenComparingInt(MediaService::cropSortOrder)
                 .thenComparing(File::getName, String.CASE_INSENSITIVE_ORDER);
+    }
+
+    private static long sortCreationTimeMillis(File file) {
+        File original = cropOriginalFile(file);
+        return creationTimeMillis(original != null ? original : file);
+    }
+
+    private static String sortGroupName(File file) {
+        File original = cropOriginalFile(file);
+        return original != null ? original.getName() : file.getName();
+    }
+
+    private static int cropSortOrder(File file) {
+        return cropOriginalFile(file) == null ? 0 : 1;
+    }
+
+    private static File cropOriginalFile(File file) {
+        String name = file.getName();
+        int dotIndex = name.lastIndexOf('.');
+        String baseName = dotIndex > 0 ? name.substring(0, dotIndex) : name;
+        int markerIndex = baseName.lastIndexOf("_ausschnitt");
+        if (markerIndex <= 0) {
+            return null;
+        }
+
+        String suffix = baseName.substring(markerIndex + "_ausschnitt".length());
+        if (!suffix.isEmpty() && !suffix.matches("_\\d+")) {
+            return null;
+        }
+
+        File parent = file.getParentFile();
+        if (parent == null) {
+            return null;
+        }
+
+        String originalBaseName = baseName.substring(0, markerIndex);
+        String[] extensions = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".mpo"};
+        for (String extension : extensions) {
+            File candidate = new File(parent, originalBaseName + extension);
+            if (candidate.isFile() && Controller.isImageFile(candidate)) {
+                return candidate;
+            }
+        }
+        return null;
     }
 
     private static long creationTimeMillis(File file) {

@@ -28,10 +28,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -64,8 +66,13 @@ public class ThumbnailPanel extends JPanel {
     private JLabel myLabel;
     private static final int INITIAL_VIDEO_THUMBNAIL_FRAMES = 1;
     private static final int PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL = 3;
+    private static final int INITIAL_VISIBLE_PRIORITY_COUNT = 60;
+    private static final int RESTORED_SELECTION_PRIORITY_RADIUS = 45;
+    private static final int THUMBNAIL_LOAD_BATCH_SIZE = 8;
+    private static final int MAX_BACKGROUND_THUMBNAIL_LOADS = 8;
     private JPanel pendingRefreshPanel;
     private final Timer thumbnailUiRefreshTimer = new Timer(80, e -> flushThumbnailUiRefresh());
+    private final Timer thumbnailLoadQueueTimer = new Timer(80, e -> drainThumbnailLoadQueue());
     private final TransferHandler fileDropTransferHandler = createFileDropTransferHandler();
     private static final Pattern HTML_IMAGE_SRC_PATTERN = Pattern.compile("<img[^>]+src=[\"']([^\"']+)[\"']", Pattern.CASE_INSENSITIVE);
     private static final String ZOOM_VISIBLE_RECT_PROPERTY = "zoomVisibleRect";
@@ -674,6 +681,7 @@ public class ThumbnailPanel extends JPanel {
         for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
             boolean visible = view.intersects(thumb.label.getBounds());
             if (visible) {
+                requestThumbnailLoad(thumb, currentGenerationId);
                 requestRemainingVideoFramesIfNeeded(thumb);
                 if (!thumb.isRunning) {
                     thumb.start();
@@ -705,6 +713,11 @@ public class ThumbnailPanel extends JPanel {
     private volatile int previewProgressTotal = 0;
     private volatile Set<String> thumbnailCacheNames = ConcurrentHashMap.newKeySet();
     private volatile Path thumbnailCacheIndexPath;
+    private final Set<String> requestedThumbnailLoads = ConcurrentHashMap.newKeySet();
+    private final Queue<File> thumbnailLoadQueue = new ArrayDeque<>();
+    private final AtomicInteger thumbnailLoadProcessedFiles = new AtomicInteger();
+    private final AtomicInteger activeThumbnailLoadTasks = new AtomicInteger();
+    private final Map<String, AnimatedThumbnail> thumbnailsByName = new HashMap<>();
     int processed = 0;
 
     public void populate(List<File> _mediaFiles) {
@@ -727,9 +740,16 @@ public class ThumbnailPanel extends JPanel {
         totalFramesLoaded = 0;
         framesFromCache = 0;
         previewProgressLoaded = 0;
-        previewProgressTotal = mediaFiles.size();
+        previewProgressTotal = 0;
+        thumbnailLoadProcessedFiles.set(0);
+        activeThumbnailLoadTasks.set(0);
+        requestedThumbnailLoads.clear();
+        synchronized (thumbnailLoadQueue) {
+            thumbnailLoadQueue.clear();
+        }
+        thumbnailLoadQueueTimer.stop();
         rebuildThumbnailCacheIndex();
-        updateInitialLoadOverlay(0, mediaFiles.size());
+        updateInitialLoadOverlay(0, 0);
 
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
@@ -742,26 +762,23 @@ public class ThumbnailPanel extends JPanel {
             long now = System.currentTimeMillis();
             animatedThumbnails.forEach(AnimatedThumbnail::stop);
             animatedThumbnails.clear();
+            thumbnailsByName.clear();
             selectedLabel = null;
             myLabel = null;
             scrollPane.setViewportView(loadingLabel);
             System.out.println("thumbnail ui reset took " + (System.currentTimeMillis() - now));
         });
 
-        EventBus.get().publishDirect(new ThumbnailsLoadedEvent(0, mediaFiles.size()));
-        AtomicInteger processedFiles = new AtomicInteger();
-
+        List<File> eligibleMediaFiles = new ArrayList<>();
         for (File file : mediaFiles) {
             MEDIA_TYPE type = Controller.isImageFile(file) ? MEDIA_TYPE.IMAGE : Controller.isVideoFile(file) ? MEDIA_TYPE.VIDEO : null;
             if (type == null) {
-                publishProgress(processedFiles.incrementAndGet(), mediaFiles.size());
                 continue;
             }
 
             try {
                 if (type == MEDIA_TYPE.IMAGE) {
                     if (RangeHandler.getInstance().getTotalLength(file) > 0) {
-                        publishProgress(processedFiles.incrementAndGet(), mediaFiles.size());
                         continue;
                     }
                 } else {
@@ -770,7 +787,6 @@ public class ThumbnailPanel extends JPanel {
                         int actualDuration = RangeHandler.getInstance().getTotalLength(file);
 
                         if (actualDuration > 0 && actualDuration < minDuration) {
-                            publishProgress(processedFiles.incrementAndGet(), mediaFiles.size());
                             continue;
                         }
 
@@ -783,30 +799,76 @@ public class ThumbnailPanel extends JPanel {
                 es.printStackTrace();
             }
 
-            int initialFrameCount = type == MEDIA_TYPE.IMAGE ? ANIMATION_FRAMES_PER_THUMBNAIL : INITIAL_VIDEO_THUMBNAIL_FRAMES;
-            CompletableFuture
-                    .supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, initialFrameCount), Controller.getInstance().getExecutorService())
-                    .exceptionally(ex -> {
-                        System.err.println("[ThumbnailPanel] Initial thumbnail failed for " + file.getAbsolutePath() + ": " + ex.getMessage());
-                        return List.of();
-                    })
-                    .thenAccept(thumbFiles -> {
-                if (generation != currentGenerationId) return;
-                int done = processedFiles.incrementAndGet();
-                publishProgress(done, mediaFiles.size());
-                if (thumbFiles != null && !thumbFiles.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> {
-                        if (generation != currentGenerationId) return;
-                        if (scrollPane.getViewport().getView() == loadingLabel) {
-                            scrollPane.setViewportView(newGridPanel);
-                        }
-                        addThumbnailLabelTo(newGridPanel, type, thumbFiles, file, displayOrder);
-                        thumbnailsLoadedCount++;
-                    });
-                }
-            });
+            eligibleMediaFiles.add(file);
         }
 
+        previewProgressTotal = eligibleMediaFiles.size();
+        EventBus.get().publishDirect(new ThumbnailsLoadedEvent(0, eligibleMediaFiles.size()));
+        updateInitialLoadOverlay(0, eligibleMediaFiles.size());
+
+        runOnEdtAndWait(() -> {
+            if (generation != currentGenerationId) return;
+            scrollPane.setViewportView(newGridPanel);
+            for (File file : eligibleMediaFiles) {
+                MEDIA_TYPE type = Controller.isImageFile(file) ? MEDIA_TYPE.IMAGE : MEDIA_TYPE.VIDEO;
+                addThumbnailPlaceholderTo(newGridPanel, type, file, displayOrder);
+            }
+            requestThumbnailUiRefresh(newGridPanel);
+            updateVisibleThumbnails();
+        });
+
+        List<File> prioritizedMediaFiles = prioritizeMediaLoadOrder(eligibleMediaFiles);
+        synchronized (thumbnailLoadQueue) {
+            thumbnailLoadQueue.clear();
+            thumbnailLoadQueue.addAll(prioritizedMediaFiles);
+        }
+        SwingUtilities.invokeLater(() -> {
+            drainThumbnailLoadQueue();
+            if (!thumbnailLoadQueueTimer.isRunning()) {
+                thumbnailLoadQueueTimer.start();
+            }
+        });
+
+    }
+
+    private List<File> prioritizeMediaLoadOrder(List<File> mediaFiles) {
+        List<File> result = new ArrayList<>(mediaFiles.size());
+        File current = AppState.get().getCurrentFile();
+
+        if (current != null) {
+            int currentIndex = findFileIndexByName(mediaFiles, current.getName());
+            if (currentIndex >= 0) {
+                addMediaRange(result, mediaFiles,
+                        currentIndex - RESTORED_SELECTION_PRIORITY_RADIUS,
+                        currentIndex + RESTORED_SELECTION_PRIORITY_RADIUS
+                );
+            }
+        }
+
+        addMediaRange(result, mediaFiles, 0, INITIAL_VISIBLE_PRIORITY_COUNT - 1);
+        addMediaRange(result, mediaFiles, 0, mediaFiles.size() - 1);
+        return result;
+    }
+
+    private int findFileIndexByName(List<File> files, String fileName) {
+        if (fileName == null) return -1;
+        for (int i = 0; i < files.size(); i++) {
+            if (fileName.equals(files.get(i).getName())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    private void addMediaRange(List<File> target, List<File> source, int startInclusive, int endInclusive) {
+        int start = Math.max(0, startInclusive);
+        int end = Math.min(source.size() - 1, endInclusive);
+        for (int i = start; i <= end; i++) {
+            File file = source.get(i);
+            if (!target.contains(file)) {
+                target.add(file);
+            }
+        }
     }
 
     private void installFileDropHandler(JComponent component) {
@@ -1205,7 +1267,7 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private void updateInitialLoadOverlay(int loaded, int total) {
-        Runnable update = () -> initialLoadOverlay.setProgress(this, loaded, total);
+        Runnable update = () -> initialLoadOverlay.hideOverlay();
         if (SwingUtilities.isEventDispatchThread()) {
             update.run();
         } else {
@@ -1230,6 +1292,161 @@ public class ThumbnailPanel extends JPanel {
             SwingUtilities.invokeAndWait(task);
         } catch (Exception e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    private void addThumbnailPlaceholderTo(JPanel panel, MEDIA_TYPE type, File file, Map<String, Integer> displayOrder) {
+        JLabel label = createThumbnailLabel(type, file);
+
+        AnimatedThumbnail thumbnail = new AnimatedThumbnail();
+        thumbnail.imageFiles = null;
+        thumbnail.animationTimer = null;
+        thumbnail.label = label;
+        thumbnail.isRunning = false;
+        thumbnail.type = type;
+        thumbnail.filename = file.getName();
+
+        int insertAt = findThumbnailInsertIndex(file, displayOrder);
+        panel.add(label, insertAt);
+        animatedThumbnails.add(insertAt, thumbnail);
+        thumbnailsByName.put(file.getName(), thumbnail);
+        selectRestoredThumbnailIfNeeded(label, file);
+    }
+
+    private JLabel createThumbnailLabel(MEDIA_TYPE type, File file) {
+        JLabel label = new JLabel();
+        label.setHorizontalAlignment(SwingConstants.CENTER);
+        label.setVerticalAlignment(SwingConstants.CENTER);
+        label.setPreferredSize(new Dimension(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
+        label.setOpaque(true);
+        label.setBackground(Color.DARK_GRAY);
+        label.putClientProperty("file", file);
+        label.addMouseListener(mouseListener);
+        label.addMouseMotionListener((MouseMotionListener) mouseListener);
+        installThumbnailHoverPreload(label, type, file);
+        return label;
+    }
+
+    private void installThumbnailHoverPreload(JLabel label, MEDIA_TYPE type, File file) {
+        label.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseEntered(MouseEvent e) {
+                if (type == MEDIA_TYPE.IMAGE) {
+                    currentHoverFile = file;
+
+                    Controller.getInstance().getExecutorService().submit(() -> {
+                        H.sleep(50);
+                        if (currentHoverFile != file) return;
+
+                        try {
+                            if (file.getName().toLowerCase().endsWith(".mpo")) {
+                                MpoReader.preloadFrames(file);
+                            } else {
+                                File resolved = AppState.get().getFileForCurrentDirectory(file);
+                                BufferedImage image = ImageIO.read(resolved);
+                                H.out("setting preloaded image " + file.getName());
+                                AppState.get().setPreloadedImage(image);
+                                AppState.get().setPreloadedImageFile(resolved);
+                            }
+                        } catch (IOException ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
+                }
+            }
+        });
+    }
+
+    private void drainThumbnailLoadQueue() {
+        if (currentGenerationId == 0) return;
+
+        int submitted = 0;
+        while (submitted < THUMBNAIL_LOAD_BATCH_SIZE && activeThumbnailLoadTasks.get() < MAX_BACKGROUND_THUMBNAIL_LOADS) {
+            File file;
+            synchronized (thumbnailLoadQueue) {
+                file = thumbnailLoadQueue.poll();
+            }
+            if (file == null) {
+                thumbnailLoadQueueTimer.stop();
+                return;
+            }
+
+            AnimatedThumbnail thumbnail = thumbnailsByName.get(file.getName());
+            if (thumbnail != null && requestThumbnailLoad(thumbnail, currentGenerationId)) {
+                submitted++;
+            }
+        }
+    }
+
+    private boolean requestThumbnailLoad(AnimatedThumbnail thumbnail, long generation) {
+        if (thumbnail == null || thumbnail.filename == null || thumbnail.label == null) return false;
+        if (thumbnail.imageFiles != null && !thumbnail.imageFiles.isEmpty()) return false;
+        if (!requestedThumbnailLoads.add(thumbnail.filename)) return false;
+
+        File file = (File) thumbnail.label.getClientProperty("file");
+        if (file == null) return false;
+
+        MEDIA_TYPE type = thumbnail.type;
+        int initialFrameCount = type == MEDIA_TYPE.IMAGE ? ANIMATION_FRAMES_PER_THUMBNAIL : INITIAL_VIDEO_THUMBNAIL_FRAMES;
+        activeThumbnailLoadTasks.incrementAndGet();
+        CompletableFuture
+                .supplyAsync(() -> type == MEDIA_TYPE.IMAGE ? loadImageThumbnail(file) : loadThumbnails(file, initialFrameCount), Controller.getInstance().getExecutorService())
+                .exceptionally(ex -> {
+                    System.err.println("[ThumbnailPanel] Initial thumbnail failed for " + file.getAbsolutePath() + ": " + ex.getMessage());
+                    return List.of();
+                })
+                .thenAccept(thumbFiles -> {
+                    if (generation != currentGenerationId) return;
+                    int done = thumbnailLoadProcessedFiles.incrementAndGet();
+                    publishProgress(done, previewProgressTotal);
+                    if (thumbFiles == null || thumbFiles.isEmpty()) return;
+
+                    SwingUtilities.invokeLater(() -> {
+                        if (generation != currentGenerationId || !animatedThumbnails.contains(thumbnail)) return;
+                        applyLoadedThumbnail(thumbnail, type, thumbFiles, file);
+                    });
+                })
+                .whenComplete((ignored, throwable) -> {
+                    activeThumbnailLoadTasks.decrementAndGet();
+                    SwingUtilities.invokeLater(this::drainThumbnailLoadQueue);
+                });
+        return true;
+    }
+
+    private void applyLoadedThumbnail(AnimatedThumbnail thumbnail, MEDIA_TYPE type, List<File> thumbnailFiles, File file) {
+        JLabel label = thumbnail.label;
+        thumbnail.imageFiles = thumbnailFiles;
+
+        if (type == MEDIA_TYPE.IMAGE) {
+            int rotation = RotationHandler.getInstance().getRotation(file);
+            ThumbnailZoomMode mode = Controller.getInstance().getControlPanel().getThumbnailZoomMode();
+            boolean needsDynamicThumbnail = rotation != 0
+                    || (mode != ThumbnailZoomMode.STANDARD && ImageZoomHandler.getInstance().getZoomForFile(file) != null);
+            if (!needsDynamicThumbnail && !thumbnailFiles.isEmpty()) {
+                CompletableFuture
+                        .supplyAsync(() -> createCachedThumbnailIcon(thumbnailFiles.get(0)), Controller.getInstance().getExecutorService())
+                        .thenAccept(icon -> {
+                            if (icon != null) {
+                                SwingUtilities.invokeLater(() -> label.setIcon(icon));
+                            }
+                        });
+            } else {
+                CompletableFuture.runAsync(() -> {
+                    ThumbnailRenderResult result = createImageThumbnailIcon(file);
+                    if (result != null) {
+                        SwingUtilities.invokeLater(() -> applyThumbnailRenderResult(label, result));
+                    }
+                }, Controller.getInstance().getExecutorService());
+            }
+        } else {
+            Image image = Toolkit.getDefaultToolkit().getImage(thumbnailFiles.get(0).getAbsolutePath());
+            label.setIcon(new ImageIcon(image));
+        }
+
+        thumbnailsLoadedCount++;
+        if (animatedThumbnails.indexOf(thumbnail) < 20) {
+            thumbnail.start();
+            thumbnail.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
         }
     }
 
@@ -1699,6 +1916,11 @@ public class ThumbnailPanel extends JPanel {
             if (isShowing() && now - lastPaintMillis <= 1) {
                 paintImmediately(0, 0, getWidth(), getHeight());
             }
+        }
+
+        void hideOverlay() {
+            setVisible(false);
+            staleProgressTimer.stop();
         }
 
         private void hideIfProgressIsStale() {
