@@ -62,7 +62,6 @@ public class ThumbnailPanel extends JPanel {
     private JLabel myLabel;
     private static final int INITIAL_VIDEO_THUMBNAIL_FRAMES = 1;
     private static final int PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL = 3;
-    private static final int PROGRESS_UPDATE_STEP = 25;
     private JPanel pendingRefreshPanel;
     private final Timer thumbnailUiRefreshTimer = new Timer(80, e -> flushThumbnailUiRefresh());
     private final TransferHandler fileDropTransferHandler = createFileDropTransferHandler();
@@ -674,6 +673,8 @@ public class ThumbnailPanel extends JPanel {
     int framesFromCache = 0;
 
     private volatile long currentGenerationId = 0;
+    private volatile int previewProgressLoaded = 0;
+    private volatile int previewProgressTotal = 0;
     private volatile Set<String> thumbnailCacheNames = ConcurrentHashMap.newKeySet();
     private volatile Path thumbnailCacheIndexPath;
     int processed = 0;
@@ -697,6 +698,8 @@ public class ThumbnailPanel extends JPanel {
         thumbnailsLoadedCount = 0;
         totalFramesLoaded = 0;
         framesFromCache = 0;
+        previewProgressLoaded = 0;
+        previewProgressTotal = mediaFiles.size();
         rebuildThumbnailCacheIndex();
 
         // Neues GridPanel erzeugen
@@ -716,7 +719,7 @@ public class ThumbnailPanel extends JPanel {
             System.out.println("thumbnail ui reset took " + (System.currentTimeMillis() - now));
         });
 
-        EventBus.get().publish(new ThumbnailsLoadedEvent(0, mediaFiles.size()));
+        EventBus.get().publishDirect(new ThumbnailsLoadedEvent(0, mediaFiles.size()));
         AtomicInteger processedFiles = new AtomicInteger();
 
         for (File file : mediaFiles) {
@@ -1160,9 +1163,9 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private void publishProgress(int loaded, int total) {
-        if (loaded == total || loaded % PROGRESS_UPDATE_STEP == 0) {
-            EventBus.get().publish(new ThumbnailsLoadedEvent(loaded, total));
-        }
+        previewProgressLoaded = loaded;
+        previewProgressTotal = total;
+        EventBus.get().publishDirect(new ThumbnailsLoadedEvent(loaded, total));
     }
 
     private void runOnEdt(Runnable task) {
@@ -1339,6 +1342,7 @@ public class ThumbnailPanel extends JPanel {
                             thumbnail.start();
                             thumbnail.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
                         }
+                        updateVisibleThumbnails();
                     });
                 });
     }

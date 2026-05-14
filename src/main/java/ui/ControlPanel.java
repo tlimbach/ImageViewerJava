@@ -524,7 +524,23 @@ public class ControlPanel extends JPanel {
     }
 
     public void setThumbnailsLoaded(int loaded, int total) {
-        SwingUtilities.invokeLater(() -> lblThumbnailsLoadedCount.setText("Thumbnails geladen: " + loaded + " / " + total));
+        setThumbnailProgressText("Vorschauen geladen: " + loaded + " / " + total);
+    }
+
+    private void setThumbnailProgressText(String text) {
+        Runnable update = () -> {
+            lblThumbnailsLoadedCount.setText(text);
+            lblThumbnailsLoadedCount.revalidate();
+            lblThumbnailsLoadedCount.paintImmediately(0, 0,
+                    lblThumbnailsLoadedCount.getWidth(),
+                    lblThumbnailsLoadedCount.getHeight());
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            update.run();
+        } else {
+            SwingUtilities.invokeLater(update);
+        }
     }
 
     public void setSelectedFile(File file) {

@@ -64,6 +64,21 @@ public class EventBus {
         }
     }
 
+    public <E> void publishDirect(E event) {
+        List<Consumer<?>> list = listeners.get(event.getClass());
+        if (list != null) {
+            for (Consumer<?> raw : list) {
+                Consumer<E> listener = (Consumer<E>) raw;
+                try {
+                    listener.accept(event);
+                } catch (Exception ex) {
+                    System.err.println("Event listener error: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            }
+        }
+    }
+
     /**
      * Nur zu Debug-Zwecken: Wer horcht gerade auf welchen Typ?
      */
