@@ -230,6 +230,11 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
     }
 
+    public void toggleDisplayMode(File file) {
+        if (this.file == null || file == null || !this.file.equals(file) || getActiveZoom() == null) return;
+        setDisplayFullSize(!displayFullSize);
+    }
+
     private void resetZoom() {
         clearPendingWheelZoom();
         previewZoom = null;

@@ -80,6 +80,9 @@ public class ThumbnailPanel extends JPanel {
     private static final String ZOOM_IMAGE_SIZE_PROPERTY = "zoomImageSize";
     private static final String ZOOM_RENDER_IMAGE_PROPERTY = "zoomRenderImage";
     private static final int THUMBNAIL_PAN_START_DISTANCE = 5;
+    private static final double THUMBNAIL_ZOOM_TOGGLE_WIDTH_RATIO = 0.20;
+    private static final int THUMBNAIL_ZOOM_TOGGLE_ANIMATION_DELAY_MS = 16;
+    private static final float THUMBNAIL_ZOOM_TOGGLE_ANIMATION_STEP = 0.18f;
     private static final float[] MARCHING_ANTS_DASH = {7f, 7f};
 
     private JLabel zoomDragLabel;
@@ -95,6 +98,10 @@ public class ThumbnailPanel extends JPanel {
     private int thumbnailPressClickCount;
     private float marchingAntsPhase;
     private final Timer marchingAntsTimer = new Timer(220, e -> repaintMarchingAntsThumbnails());
+    private final Timer zoomToggleAnimationTimer = new Timer(
+            THUMBNAIL_ZOOM_TOGGLE_ANIMATION_DELAY_MS,
+            e -> animateThumbnailZoomToggles()
+    );
 
     public ThumbnailPanel() {
 
@@ -102,6 +109,7 @@ public class ThumbnailPanel extends JPanel {
         mouseListener = createMouseListener();
         thumbnailUiRefreshTimer.setRepeats(false);
         marchingAntsTimer.start();
+        zoomToggleAnimationTimer.start();
 
         setLayout(new BorderLayout());
         scrollPane = new JScrollPane();
@@ -369,7 +377,11 @@ public class ThumbnailPanel extends JPanel {
                 clearThumbnailZoomDrag();
 
                 if (thumbnailPressLabel != null && thumbnailPressFile != null && isThumbnailClick(e)) {
-                    performThumbnailClick(thumbnailPressFile, thumbnailPressClickCount);
+                    if (isPointInThumbnailZoomToggle(thumbnailPressLabel, e.getPoint())) {
+                        performThumbnailZoomToggle(thumbnailPressFile);
+                    } else {
+                        performThumbnailClick(thumbnailPressFile, thumbnailPressClickCount);
+                    }
                 }
                 clearThumbnailPress();
             }
@@ -377,11 +389,20 @@ public class ThumbnailPanel extends JPanel {
             @Override
             public void mouseMoved(MouseEvent e) {
                 JLabel label = (JLabel) e.getSource();
-                if (isPointInThumbnailZoomRect(label, e.getPoint())) {
+                boolean overZoomToggle = isPointInThumbnailZoomToggle(label, e.getPoint());
+                updateThumbnailZoomToggleHover(label, overZoomToggle);
+                if (overZoomToggle || isPointInThumbnailZoomRect(label, e.getPoint())) {
                     label.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
                 } else {
                     label.setCursor(Cursor.getDefaultCursor());
                 }
+            }
+
+            @Override
+            public void mouseExited(MouseEvent e) {
+                JLabel label = (JLabel) e.getSource();
+                updateThumbnailZoomToggleHover(label, false);
+                label.setCursor(Cursor.getDefaultCursor());
             }
         };
     }
@@ -405,6 +426,14 @@ public class ThumbnailPanel extends JPanel {
         }
         AppState.get().setCurrentFile(file);
         Controller.getInstance().handleMedia(file, false);
+    }
+
+    private void performThumbnailZoomToggle(File file) {
+        if (file == null || !Controller.isImageFile(file)) return;
+        if (ImageZoomHandler.getInstance().getZoomForFile(file) == null) return;
+
+        AppState.get().setCurrentFile(file);
+        MediaView.getInstance().toggleImageDisplayMode(file);
     }
 
     private void clearThumbnailPress() {
@@ -651,6 +680,43 @@ public class ThumbnailPanel extends JPanel {
         if (Controller.getInstance().getControlPanel().getThumbnailZoomMode() != ThumbnailZoomMode.GRAYED_OUT) return false;
         Object rect = label.getClientProperty(ZOOM_VISIBLE_RECT_PROPERTY);
         return rect instanceof Rectangle2D visibleRect && visibleRect.contains(point);
+    }
+
+    private boolean isPointInThumbnailZoomToggle(JLabel label, Point point) {
+        File file = (File) label.getClientProperty("file");
+        if (file == null || !Controller.isImageFile(file)) return false;
+        if (ImageZoomHandler.getInstance().getZoomForFile(file) == null) return false;
+
+        return thumbnailZoomToggleBounds(label).contains(point);
+    }
+
+    private void updateThumbnailZoomToggleHover(JLabel label, boolean hovered) {
+        if (label instanceof ThumbnailLabel thumbnailLabel) {
+            thumbnailLabel.setZoomToggleHovered(hovered);
+        }
+    }
+
+    private void animateThumbnailZoomToggles() {
+        boolean needsNextTick = false;
+        for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
+            if (thumb.label instanceof ThumbnailLabel thumbnailLabel) {
+                needsNextTick |= thumbnailLabel.animateZoomToggle();
+            }
+        }
+        if (!needsNextTick) {
+            zoomToggleAnimationTimer.stop();
+        }
+    }
+
+    private void requestZoomToggleAnimation() {
+        if (!zoomToggleAnimationTimer.isRunning()) {
+            zoomToggleAnimationTimer.start();
+        }
+    }
+
+    private Rectangle thumbnailZoomToggleBounds(JLabel label) {
+        int width = Math.max(1, (int) Math.round(label.getWidth() * THUMBNAIL_ZOOM_TOGGLE_WIDTH_RATIO));
+        return new Rectangle(label.getWidth() - width, 0, width, label.getHeight());
     }
 
     private void clearThumbnailZoomDrag() {
@@ -1314,7 +1380,7 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private JLabel createThumbnailLabel(MEDIA_TYPE type, File file) {
-        JLabel label = new JLabel();
+        JLabel label = new ThumbnailLabel();
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.setVerticalAlignment(SwingConstants.CENTER);
         label.setPreferredSize(new Dimension(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
@@ -1451,7 +1517,7 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private void addThumbnailLabelTo(JPanel panel, MEDIA_TYPE type, List<File> thumbnailFiles, File file, Map<String, Integer> displayOrder) {
-        JLabel label = new JLabel();
+        JLabel label = new ThumbnailLabel();
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.setVerticalAlignment(SwingConstants.CENTER);
         label.setPreferredSize(new Dimension(THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT));
@@ -1985,6 +2051,53 @@ public class ThumbnailPanel extends JPanel {
             Dimension imageSize,
             BufferedImage renderImage
     ) {
+    }
+
+    private class ThumbnailLabel extends JLabel {
+        private boolean zoomToggleHovered;
+        private float zoomToggleReveal;
+
+        void setZoomToggleHovered(boolean hovered) {
+            if (zoomToggleHovered == hovered) return;
+            zoomToggleHovered = hovered;
+            requestZoomToggleAnimation();
+        }
+
+        boolean animateZoomToggle() {
+            float target = zoomToggleHovered ? 1f : 0f;
+            if (Math.abs(zoomToggleReveal - target) < 0.01f) {
+                zoomToggleReveal = target;
+                return false;
+            }
+
+            if (zoomToggleReveal < target) {
+                zoomToggleReveal = Math.min(target, zoomToggleReveal + THUMBNAIL_ZOOM_TOGGLE_ANIMATION_STEP);
+            } else {
+                zoomToggleReveal = Math.max(target, zoomToggleReveal - THUMBNAIL_ZOOM_TOGGLE_ANIMATION_STEP);
+            }
+            repaint();
+            return true;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+
+            File file = (File) getClientProperty("file");
+            if (file == null || !Controller.isImageFile(file)) return;
+            if (ImageZoomHandler.getInstance().getZoomForFile(file) == null) return;
+            if (zoomToggleReveal <= 0f) return;
+
+            Rectangle bounds = thumbnailZoomToggleBounds(this);
+            int revealWidth = Math.max(1, Math.round(bounds.width * zoomToggleReveal));
+            int x = bounds.x + bounds.width - revealWidth;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            g2.setColor(new Color(255, 221, 0, 115));
+            g2.fillRect(x, bounds.y, revealWidth, bounds.height);
+            g2.dispose();
+        }
     }
 
     private class MarchingAntsIcon extends ImageIcon {

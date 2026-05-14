@@ -541,6 +541,19 @@ public class MediaView {
                 && Controller.isImageFile(file);
     }
 
+    public void toggleImageDisplayMode(File _file) {
+        File file = AppState.get().getFileForCurrentDirectory(_file);
+        if (file == null || !Controller.isImageFile(file)) return;
+
+        if (isShowingImage(file)) {
+            imagePanel.toggleDisplayMode(file);
+            return;
+        }
+
+        AppState.get().setCurrentFile(file);
+        display(file, false);
+    }
+
     public void stopAndHide() {
         Runnable task = () -> {
             mediaPlayerComponent.mediaPlayer().controls().stop();
