@@ -22,6 +22,8 @@ public class AnimatedThumbnail {
     Timer animationTimer;
     boolean isRunning = false;
     MEDIA_TYPE type;
+    volatile boolean fullFrameListRequested = false;
+    volatile boolean fullFrameListLoaded = false;
 
     public String filename;
 

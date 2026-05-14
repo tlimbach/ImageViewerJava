@@ -32,9 +32,11 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -130,6 +132,8 @@ public class ThumbnailPanel extends JPanel {
                                 }
 
                                 match.imageFiles = thumbFiles;
+                                match.fullFrameListRequested = true;
+                                match.fullFrameListLoaded = true;
 
                                 if (wasRunning) {
                                     match.start();
@@ -642,8 +646,11 @@ public class ThumbnailPanel extends JPanel {
         Rectangle view = scrollPane.getViewport().getViewRect();
         for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
             boolean visible = view.intersects(thumb.label.getBounds());
-            if (visible && !thumb.isRunning) {
-                thumb.start();
+            if (visible) {
+                requestRemainingVideoFramesIfNeeded(thumb);
+                if (!thumb.isRunning) {
+                    thumb.start();
+                }
             } else if (!visible && thumb.isRunning) {
                 thumb.stop();
             }
@@ -667,6 +674,8 @@ public class ThumbnailPanel extends JPanel {
     int framesFromCache = 0;
 
     private volatile long currentGenerationId = 0;
+    private volatile Set<String> thumbnailCacheNames = ConcurrentHashMap.newKeySet();
+    private volatile Path thumbnailCacheIndexPath;
     int processed = 0;
 
     public void populate(List<File> _mediaFiles) {
@@ -688,6 +697,7 @@ public class ThumbnailPanel extends JPanel {
         thumbnailsLoadedCount = 0;
         totalFramesLoaded = 0;
         framesFromCache = 0;
+        rebuildThumbnailCacheIndex();
 
         // Neues GridPanel erzeugen
         JPanel newGridPanel = new JPanel(new GridLayout(0, 3, 5, 5));
@@ -1275,10 +1285,6 @@ public class ThumbnailPanel extends JPanel {
                 aNail.start();
                 aNail.preload(PRELOAD_FRAMES_FOR_NEW_VIDEO_THUMBNAIL);
             }
-
-            if (type == MEDIA_TYPE.VIDEO) {
-                loadRemainingVideoFramesAsync(aNail, file);
-            }
         }
     }
 
@@ -1313,7 +1319,10 @@ public class ThumbnailPanel extends JPanel {
         CompletableFuture
                 .supplyAsync(() -> loadThumbnails(file, ANIMATION_FRAMES_PER_THUMBNAIL), Controller.getInstance().getExecutorService())
                 .thenAccept(thumbFiles -> {
-                    if (thumbFiles == null || thumbFiles.isEmpty()) return;
+                    if (thumbFiles == null || thumbFiles.isEmpty()) {
+                        thumbnail.fullFrameListRequested = false;
+                        return;
+                    }
 
                     SwingUtilities.invokeLater(() -> {
                         if (!animatedThumbnails.contains(thumbnail)) return;
@@ -1324,6 +1333,7 @@ public class ThumbnailPanel extends JPanel {
                         }
 
                         thumbnail.imageFiles = thumbFiles;
+                        thumbnail.fullFrameListLoaded = true;
 
                         if (wasRunning) {
                             thumbnail.start();
@@ -1333,10 +1343,21 @@ public class ThumbnailPanel extends JPanel {
                 });
     }
 
+    private void requestRemainingVideoFramesIfNeeded(AnimatedThumbnail thumbnail) {
+        if (thumbnail.type != MEDIA_TYPE.VIDEO) return;
+        if (thumbnail.fullFrameListRequested || thumbnail.fullFrameListLoaded) return;
+        File file = (File) thumbnail.label.getClientProperty("file");
+        if (file == null) return;
+
+        thumbnail.fullFrameListRequested = true;
+        loadRemainingVideoFramesAsync(thumbnail, file);
+    }
+
     public void invalidateThumbnails(File videoFile) {
         File[] cachedFiles = getThumbnailCacheDir().listFiles((dir, name) -> name.endsWith(videoFile.getName() + ".jpg"));
         if (cachedFiles != null) {
             for (File f : cachedFiles) {
+                thumbnailCacheNames.remove(f.getName());
                 f.delete();
             }
         }
@@ -1658,14 +1679,15 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private File fetchVideoThumbnail(File videoFile, int milli) {
-        if (!getThumbnailCacheDir().exists()) {
-            getThumbnailCacheDir().mkdirs();
+        File thumbnailCacheDir = getThumbnailCacheDir();
+        if (!thumbnailCacheDir.exists()) {
+            thumbnailCacheDir.mkdirs();
         }
 
         String nameInCache = milli + "_" + videoFile.getName() + ".jpg";
         totalFramesLoaded++;
-        File file = new File(getThumbnailCacheDir(), nameInCache);
-        if (file.exists()) {
+        File file = new File(thumbnailCacheDir, nameInCache);
+        if (isKnownCachedThumbnail(thumbnailCacheDir, nameInCache, file)) {
             framesFromCache++;
             return file;
         }
@@ -1688,6 +1710,35 @@ public class ThumbnailPanel extends JPanel {
         return thumbsDir.toFile();
     }
 
+    private void rebuildThumbnailCacheIndex() {
+        File cacheDir = getThumbnailCacheDir();
+        Path cachePath = cacheDir.toPath().toAbsolutePath().normalize();
+        Set<String> names = ConcurrentHashMap.newKeySet();
+        File[] cachedFiles = cacheDir.listFiles((dir, name) -> name.endsWith(".jpg"));
+        if (cachedFiles != null) {
+            for (File file : cachedFiles) {
+                names.add(file.getName());
+            }
+        }
+        thumbnailCacheNames = names;
+        thumbnailCacheIndexPath = cachePath;
+    }
+
+    private boolean isKnownCachedThumbnail(File cacheDir, String nameInCache, File file) {
+        Path cachePath = cacheDir.toPath().toAbsolutePath().normalize();
+        Set<String> names = thumbnailCacheNames;
+        if (cachePath.equals(thumbnailCacheIndexPath) && names.contains(nameInCache)) {
+            return true;
+        }
+
+        if (file.exists()) {
+            names.add(nameInCache);
+            return true;
+        }
+
+        return false;
+    }
+
     private File extractVideoThumbnail(File videoFile, int milli) {
         try {
             String nameInCache = milli + "_" + videoFile.getName() + ".jpg";
@@ -1707,7 +1758,11 @@ public class ThumbnailPanel extends JPanel {
             pb.redirectError(ProcessBuilder.Redirect.DISCARD);
             pb.start().waitFor();
 
-            return file.exists() ? file : null;
+            if (file.exists()) {
+                thumbnailCacheNames.add(file.getName());
+                return file;
+            }
+            return null;
 
         } catch (Exception e) {
             e.printStackTrace();

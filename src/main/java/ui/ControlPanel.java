@@ -30,7 +30,7 @@ public class ControlPanel extends JPanel {
     private final JComboBox<ThumbnailZoomMode> cmbThumbnailZoomMode = new JComboBox<>(ThumbnailZoomMode.values());
 
 
-    private final JCheckBox cbxAutostart = new JCheckBox("Autostart");
+    private final JCheckBox cbxAutostart = new JCheckBox("Autostart", true);
 
     private final JSlider sldMoviePosition = new JSlider();
     private JTextField txtDuration;
