@@ -249,14 +249,12 @@ public class AnimatedImagePanel extends JPanel {
     private void deleteCurrentImage() {
         if (file == null) return;
         beginInteraction();
-        deleteConfirmationOverlay.showForFile(file.getName(), () -> {
-            if (!MediaDeleteSupport.deleteFile(file)) {
-                deleteConfirmationOverlay.showError();
-                return;
-            }
-            deleteConfirmationOverlay.setVisible(false);
+        if (MediaDeleteSupport.moveFileToTrash(file)) {
             finishInteraction();
-        }, this::finishInteraction);
+        } else {
+            finishInteraction();
+            JOptionPane.showMessageDialog(this, "Datei konnte nicht in den Papierkorb verschoben werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
+        }
         setOverlayVisible(false);
         repaint();
     }

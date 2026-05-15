@@ -334,16 +334,10 @@ public class ThumbnailPanel extends JPanel {
                     JMenuItem deleteItem = new JMenuItem("Bild löschen");
 
                     deleteItem.addActionListener(ev -> {
-                        int result = JOptionPane.showConfirmDialog(label, "Bild wirklich löschen?\n" + file.getName(), "Löschen bestätigen", JOptionPane.YES_NO_OPTION);
-
-                        if (result == JOptionPane.YES_OPTION) {
-                            if (file.delete()) {
-                                removeThumbnail(label);
-                                EventBus.get().publish(new MediaFileDeletedEvent(file));
-                                EventBus.get().publish(new TagsChangedEvent());
-                            } else {
-                                JOptionPane.showMessageDialog(label, "Datei konnte nicht gelöscht werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
-                            }
+                        if (MediaDeleteSupport.moveFileToTrash(file)) {
+                            removeThumbnail(label);
+                        } else {
+                            JOptionPane.showMessageDialog(label, "Datei konnte nicht in den Papierkorb verschoben werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
                         }
                     });
 

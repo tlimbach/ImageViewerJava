@@ -270,16 +270,13 @@ public class ZoomableImagePanel extends JPanel {
 
     private void deleteCurrentImage() {
         if (file == null) return;
-        deleteConfirmationOverlay.showForFile(file.getName(), () -> {
-            if (!MediaDeleteSupport.deleteFile(file)) {
-                deleteConfirmationOverlay.showError();
-                return;
-            }
-            deleteConfirmationOverlay.setVisible(false);
+        if (MediaDeleteSupport.moveFileToTrash(file)) {
             this.file = null;
             this.image = null;
             repaint();
-        }, null);
+        } else {
+            JOptionPane.showMessageDialog(this, "Datei konnte nicht in den Papierkorb verschoben werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
+        }
         setOverlayVisible(false);
         repaint();
     }
