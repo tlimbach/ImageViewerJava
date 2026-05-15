@@ -57,6 +57,7 @@ public class ZoomableImagePanel extends JPanel {
     private final OverlayButton artTagButton = new OverlayButton(ART_TAG);
     private final JComboBox<ImageSaturationHandler.SaturationLevel> saturationCombo =
             new JComboBox<>(ImageSaturationHandler.SaturationLevel.values());
+    private final JCheckBox nextImageAfterTaggingCheckbox = new JCheckBox("Nächstes Bild nach Tagging");
     private final OverlayButton cropButton = new OverlayButton("Neues Bild");
     private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
     private final OverlayButton closeButton = new OverlayButton("Schließen");
@@ -109,6 +110,7 @@ public class ZoomableImagePanel extends JPanel {
         installTagButton(beautifullTagButton, BEAUTIFULL_TAG);
         installTagButton(artTagButton, ART_TAG);
         installSaturationCombo();
+        installNextImageAfterTaggingCheckbox();
         cropButton.setFocusable(false);
         cropButton.setVisible(false);
         cropButton.setToolTipText("Neues Bild aus Auswahl");
@@ -150,6 +152,8 @@ public class ZoomableImagePanel extends JPanel {
         artTagButton.addMouseMotionListener(buttonMouseHandler);
         saturationCombo.addMouseListener(buttonMouseHandler);
         saturationCombo.addMouseMotionListener(buttonMouseHandler);
+        nextImageAfterTaggingCheckbox.addMouseListener(buttonMouseHandler);
+        nextImageAfterTaggingCheckbox.addMouseMotionListener(buttonMouseHandler);
         cropButton.addMouseListener(buttonMouseHandler);
         cropButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
@@ -165,6 +169,7 @@ public class ZoomableImagePanel extends JPanel {
         add(beautifullTagButton);
         add(artTagButton);
         add(saturationCombo);
+        add(nextImageAfterTaggingCheckbox);
         add(cropButton);
         add(deleteButton);
         add(closeButton);
@@ -313,7 +318,21 @@ public class ZoomableImagePanel extends JPanel {
         button.setFocusable(false);
         button.setVisible(false);
         button.setCheckboxVisible(true);
-        button.addActionListener(e -> toggleTagForCurrentImage(tag));
+        button.addActionListener(e -> {
+            boolean tagAdded = toggleTagForCurrentImage(tag);
+            if (tagAdded && AppState.get().isNextImageAfterTagging()) {
+                EventBus.get().publish(new UserKeyboardEvent(UserCommand.RIGHT));
+            }
+        });
+    }
+
+    private void installNextImageAfterTaggingCheckbox() {
+        nextImageAfterTaggingCheckbox.setFocusable(false);
+        nextImageAfterTaggingCheckbox.setOpaque(true);
+        nextImageAfterTaggingCheckbox.setBackground(new Color(245, 245, 245, 185));
+        nextImageAfterTaggingCheckbox.setVisible(false);
+        nextImageAfterTaggingCheckbox.addActionListener(e ->
+                AppState.get().setNextImageAfterTagging(nextImageAfterTaggingCheckbox.isSelected()));
     }
 
     private void installSaturationCombo() {
@@ -346,18 +365,22 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
     }
 
-    private void toggleTagForCurrentImage(String tag) {
-        if (file == null) return;
+    private boolean toggleTagForCurrentImage(String tag) {
+        if (file == null) return false;
 
         List<String> tags = new ArrayList<>(TagHandler.getInstance().getTagsForFile(file.getName()));
+        boolean tagAdded;
         if (tags.contains(tag)) {
             tags.removeIf(tag::equals);
+            tagAdded = false;
         } else {
             tags.add(tag);
+            tagAdded = true;
         }
         TagHandler.getInstance().setTagsToFile(tags, file.getName());
         EventBus.get().publish(new TagsChangedEvent());
         showOverlayTemporarily();
+        return tagAdded;
     }
 
     private boolean hasTag(String tag) {
@@ -375,6 +398,11 @@ public class ZoomableImagePanel extends JPanel {
         updatingSaturationCombo = true;
         saturationCombo.setSelectedItem(ImageSaturationHandler.getInstance().getLevelForFile(file));
         updatingSaturationCombo = false;
+    }
+
+    private void updateNextImageAfterTaggingCheckbox(boolean visible) {
+        nextImageAfterTaggingCheckbox.setVisible(visible && file != null);
+        nextImageAfterTaggingCheckbox.setSelected(AppState.get().isNextImageAfterTagging());
     }
 
     private void closeMediaView() {
@@ -438,6 +466,7 @@ public class ZoomableImagePanel extends JPanel {
         updateTagButton(beautifullTagButton, BEAUTIFULL_TAG, visible);
         updateTagButton(artTagButton, ART_TAG, visible);
         updateSaturationCombo(visible);
+        updateNextImageAfterTaggingCheckbox(visible);
         cropButton.setVisible(visible && file != null);
         cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
@@ -743,13 +772,13 @@ public class ZoomableImagePanel extends JPanel {
         int y = MENU_MARGIN;
         previousButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 4,
+                y + (MENU_HEIGHT + MENU_GAP) * 5,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         nextButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
-                y + (MENU_HEIGHT + MENU_GAP) * 4,
+                y + (MENU_HEIGHT + MENU_GAP) * 5,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -784,27 +813,33 @@ public class ZoomableImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        saturationCombo.setBounds(
+        nextImageAfterTaggingCheckbox.setBounds(
                 x,
                 y + (MENU_HEIGHT + MENU_GAP) * 3,
                 OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
                 MENU_HEIGHT
         );
+        saturationCombo.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 4,
+                OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
+                MENU_HEIGHT
+        );
         cropButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 5,
+                y + (MENU_HEIGHT + MENU_GAP) * 6,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         deleteButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
-                y + (MENU_HEIGHT + MENU_GAP) * 5,
+                y + (MENU_HEIGHT + MENU_GAP) * 6,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         closeButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 6,
+                y + (MENU_HEIGHT + MENU_GAP) * 7,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -820,7 +855,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private Dimension getOverlayMenuSize() {
         int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
-        int height = MENU_HEIGHT * 7 + MENU_GAP * 6;
+        int height = MENU_HEIGHT * 8 + MENU_GAP * 7;
         return new Dimension(width, height);
     }
 
@@ -835,6 +870,7 @@ public class ZoomableImagePanel extends JPanel {
                 beautifullTagButton,
                 artTagButton,
                 saturationCombo,
+                nextImageAfterTaggingCheckbox,
                 cropButton,
                 deleteButton,
                 closeButton

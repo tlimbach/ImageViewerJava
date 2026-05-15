@@ -29,6 +29,8 @@ public class AppState {
 
    private boolean isMediaviewFullscreen;
 
+   private boolean nextImageAfterTagging;
+
    private BufferedImage preloadedImage;
 
    private File preloadedImageFile;
