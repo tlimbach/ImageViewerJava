@@ -31,6 +31,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Queue;
@@ -889,6 +890,56 @@ public class ThumbnailPanel extends JPanel {
             }
         });
 
+    }
+
+    public void retainDisplayedFiles(List<File> filesToKeep) {
+        Set<String> namesToKeep = new HashSet<>();
+        if (filesToKeep != null) {
+            for (File file : filesToKeep) {
+                if (file != null) {
+                    namesToKeep.add(file.getName());
+                }
+            }
+        }
+
+        runOnEdt(() -> {
+            Component view = scrollPane.getViewport().getView();
+            if (!(view instanceof JPanel gridPanel)) return;
+
+            boolean changed = false;
+            List<AnimatedThumbnail> removedThumbnails = new ArrayList<>();
+            for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
+                if (thumb.filename == null || namesToKeep.contains(thumb.filename)) {
+                    continue;
+                }
+
+                thumb.stop();
+                removedThumbnails.add(thumb);
+                thumbnailsByName.remove(thumb.filename);
+                requestedThumbnailLoads.remove(thumb.filename);
+                gridPanel.remove(thumb.label);
+                if (thumb.label == selectedLabel) {
+                    selectedLabel = null;
+                }
+                if (thumb.label == myLabel) {
+                    myLabel = null;
+                }
+                changed = true;
+            }
+
+            if (!changed) return;
+
+            animatedThumbnails.removeAll(removedThumbnails);
+            synchronized (thumbnailLoadQueue) {
+                thumbnailLoadQueue.removeIf(file -> file == null || !namesToKeep.contains(file.getName()));
+            }
+            previewProgressTotal = Math.max(0, previewProgressTotal - removedThumbnails.size());
+            updateInitialLoadOverlay(previewProgressLoaded, previewProgressTotal);
+
+            gridPanel.revalidate();
+            gridPanel.repaint();
+            updateVisibleThumbnails();
+        });
     }
 
     private List<File> prioritizeMediaLoadOrder(List<File> mediaFiles) {

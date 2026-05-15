@@ -20,9 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Locale;
 
 public class ControlPanel extends JPanel {
     private static final int DEFAULT_MEDIA_LOAD_LIMIT = 10000;
@@ -47,9 +45,7 @@ public class ControlPanel extends JPanel {
     private boolean isUpdatingFromCode = false;
     private final SlideshowManager slideshowManager = new SlideshowManager();
 
-    private static final String SPECIAL_TAG = "Ach Du Scheisse";
-    private final JComboBox<ThumbnailFilterOption> cmbThumbnailFilter = new JComboBox<>();
-    private boolean updatingThumbnailFilterOptions;
+    private final JCheckBox cbxShowUntaggedOnly = new JCheckBox();
 
     private JSlider sldVolume;
     private JLabel lblVol;
@@ -91,19 +87,21 @@ public class ControlPanel extends JPanel {
         });
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
-            updateThumbnailFilterOptions();
+            cbxShowUntaggedOnly.setSelected(false);
+            updateUntaggedFilterCheckbox();
             tagSelectionPanel.reloadTags();
         });
 
         EventBus.get().register(TagsChangedEvent.class, e->{
-            updateThumbnailFilterOptions();
+            updateUntaggedFilterCheckbox();
+            if (cbxShowUntaggedOnly.isSelected()) {
+                keepOnlyUntaggedFilesInCurrentView();
+            }
             tagSelectionPanel.reloadTags();
             if (tagEditDialog != null) {
                 tagEditDialog.refreshCurrentFile();
             }
         });
-
-        EventBus.get().register(ImageZoomChangedEvent.class, e -> updateThumbnailFilterOptions());
 
         EventBus.get().register(UserKeyboardEvent.class, e -> {
             // Hier: PAGE_UP und PAGE_DOWN (und weitere) verarbeiten
@@ -128,7 +126,7 @@ public class ControlPanel extends JPanel {
             }
         });
 
-        updateThumbnailFilterOptions();
+        updateUntaggedFilterCheckbox();
 
     }
 
@@ -462,7 +460,7 @@ public class ControlPanel extends JPanel {
                 }
             }
 
-            updateThumbnailFilterOptions();
+            updateUntaggedFilterCheckbox();
         });
 
 
@@ -527,8 +525,8 @@ public class ControlPanel extends JPanel {
     }
 
     private void addTagControls() {
-        cmbThumbnailFilter.setName("Thumbnail Filter");
-        cmbThumbnailFilter.addActionListener(a -> applySelectedThumbnailFilter());
+        cbxShowUntaggedOnly.setName("nur untagged anzeigen");
+        cbxShowUntaggedOnly.addActionListener(a -> applyUntaggedFilterCheckbox());
 
         JButton btnSetTags = new JButton("Tags setzen");
         btnSetTags.addActionListener(a -> {
@@ -548,11 +546,11 @@ public class ControlPanel extends JPanel {
             AppState.get().setAutoOpenTagsDialog(cbxAutoOpenTagsDialog.isSelected());
         });
 
-        add(H.makeHorizontalPanel(new JLabel("Thumbnail Filter"), cmbThumbnailFilter));
+        add(H.makeHorizontalPanel(cbxShowUntaggedOnly));
         add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
         tagSelectionPanel = new TagSelectionPanel();
         add(tagSelectionPanel);
-        updateThumbnailFilterOptions();
+        updateUntaggedFilterCheckbox();
     }
 
     private TagEditDialog createTagEditDialog(Window parent) {
@@ -658,132 +656,45 @@ public class ControlPanel extends JPanel {
         return (ThumbnailZoomMode) cmbThumbnailZoomMode.getSelectedItem();
     }
 
-    private void updateThumbnailFilterOptions() {
-        if (cmbThumbnailFilter == null) return;
+    private void updateUntaggedFilterCheckbox() {
+        if (cbxShowUntaggedOnly == null) return;
+        boolean hasDirectory = AppState.get().getCurrentDirectory() != null;
+        int untaggedCount = getUntaggedFiles().size();
+        int allCount = getAllMediaFiles().size();
 
-        ThumbnailFilterType selectedType = null;
-        Object selected = cmbThumbnailFilter.getSelectedItem();
-        if (selected instanceof ThumbnailFilterOption option) {
-            selectedType = option.type();
-        }
-
-        List<ThumbnailFilterOption> options = List.of(
-                new ThumbnailFilterOption(ThumbnailFilterType.UNTAGGED, "Untagged anzeigen", getUntaggedFiles().size()),
-                new ThumbnailFilterOption(ThumbnailFilterType.UNZOOMED, "Unzoomed anzeigen", getUnzoomedImageFiles().size()),
-                new ThumbnailFilterOption(ThumbnailFilterType.ZOOMED_OR_SPECIAL_TAG, "Zoomed || Ach Du Scheisse", getZoomedOrSpecialTagImageFiles().size()),
-                new ThumbnailFilterOption(ThumbnailFilterType.UNZOOMED_AND_NOT_SPECIAL_TAG, "!Zoomed && !Ach Du Scheisse", getUnzoomedAndNotSpecialTagImageFiles().size())
-        );
-
-        updatingThumbnailFilterOptions = true;
-        DefaultComboBoxModel<ThumbnailFilterOption> model = new DefaultComboBoxModel<>();
-        ThumbnailFilterOption itemToSelect = null;
-        for (ThumbnailFilterOption option : options) {
-            model.addElement(option);
-            if (option.type() == selectedType) {
-                itemToSelect = option;
-            }
-        }
-        cmbThumbnailFilter.setModel(model);
-        if (itemToSelect != null) {
-            cmbThumbnailFilter.setSelectedItem(itemToSelect);
-        }
-        updatingThumbnailFilterOptions = false;
+        cbxShowUntaggedOnly.setText("nur untagged anzeigen (" + untaggedCount + "/" + allCount + ")");
+        cbxShowUntaggedOnly.setToolTipText(cbxShowUntaggedOnly.isSelected()
+                ? untaggedCount + " ungetaggte Medien werden angezeigt"
+                : allCount + " Medien werden angezeigt");
+        cbxShowUntaggedOnly.setEnabled(hasDirectory);
     }
 
-    private void applySelectedThumbnailFilter() {
-        if (updatingThumbnailFilterOptions) return;
-        Object selected = cmbThumbnailFilter.getSelectedItem();
-        if (!(selected instanceof ThumbnailFilterOption option)) return;
+    private void applyUntaggedFilterCheckbox() {
+        if (cbxShowUntaggedOnly.isSelected()) {
+            showUntaggedFiles();
+        } else {
+            Controller.getInstance().setSelectedFiles(null);
+        }
+        updateUntaggedFilterCheckbox();
+    }
 
-        List<File> files = switch (option.type()) {
-            case UNTAGGED -> getUntaggedFiles();
-            case UNZOOMED -> getUnzoomedImageFiles();
-            case ZOOMED_OR_SPECIAL_TAG -> getZoomedOrSpecialTagImageFiles();
-            case UNZOOMED_AND_NOT_SPECIAL_TAG -> getUnzoomedAndNotSpecialTagImageFiles();
-        };
+    private void showUntaggedFiles() {
+        List<File> files = getUntaggedFiles();
         Controller.getInstance().setSelectedFiles(files.stream().map(File::getAbsolutePath).toList());
+    }
+
+    private void keepOnlyUntaggedFilesInCurrentView() {
+        Controller.getInstance().getThumbnailPanel().retainDisplayedFiles(getUntaggedFiles());
     }
 
     private List<File> getUntaggedFiles() {
         return TagHandler.getInstance().getUntaggedFiles();
     }
 
-    private List<File> getUnzoomedImageFiles() {
-        return ImageZoomHandler.getInstance().getUnzoomedImageFiles();
-    }
-
-    private List<File> getZoomedOrSpecialTagImageFiles() {
-        List<File> result = new ArrayList<>();
-        for (File file : getCurrentImageFiles()) {
-            if (hasZoom(file) || hasSpecialTag(file)) {
-                result.add(file);
-            }
-        }
-        return result;
-    }
-
-    private List<File> getUnzoomedAndNotSpecialTagImageFiles() {
-        List<File> result = new ArrayList<>();
-        for (File file : getCurrentImageFiles()) {
-            if (!hasZoom(file) && !hasSpecialTag(file)) {
-                result.add(file);
-            }
-        }
-        return result;
-    }
-
-    private List<File> getCurrentImageFiles() {
-        Path currentDir = AppState.get().getCurrentDirectory();
-        if (currentDir == null) return Collections.emptyList();
-
-        File[] files = currentDir.toFile().listFiles(File::isFile);
-        if (files == null) return Collections.emptyList();
-
-        List<File> imageFiles = new ArrayList<>();
-        for (File file : files) {
-            if (Controller.isImageFile(file)) {
-                imageFiles.add(file);
-            }
-        }
-        return imageFiles;
-    }
-
-    private boolean hasZoom(File file) {
-        return ImageZoomHandler.getInstance().getZoomForFile(file) != null;
-    }
-
-    private boolean hasSpecialTag(File file) {
-        String expected = normalizeTag(SPECIAL_TAG);
-        for (String tag : TagHandler.getInstance().getTagsForFile(file.getName())) {
-            if (normalizeTag(tag).equals(expected)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String normalizeTag(String tag) {
-        return tag == null
-                ? ""
-                : tag.toLowerCase(Locale.ROOT)
-                .replace("ß", "ss")
-                .replaceAll("[^a-z0-9]+", " ")
-                .trim()
-                .replaceAll("\\s+", " ");
-    }
-
-    private enum ThumbnailFilterType {
-        UNTAGGED,
-        UNZOOMED,
-        ZOOMED_OR_SPECIAL_TAG,
-        UNZOOMED_AND_NOT_SPECIAL_TAG
-    }
-
-    private record ThumbnailFilterOption(ThumbnailFilterType type, String label, int count) {
-        @Override
-        public String toString() {
-            return label + " (" + count + ")";
-        }
+    private List<File> getAllMediaFiles() {
+        if (AppState.get().getCurrentDirectory() == null) return List.of();
+        List<File> files = MediaService.getInstance().loadFilesFromDirectory();
+        return files == null ? List.of() : files;
     }
 
 }
