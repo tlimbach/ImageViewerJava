@@ -41,8 +41,9 @@ public class ImageSaturationHandler extends JsonSettingsStore {
 
     public enum SaturationLevel {
         NORMAL("normal", "Normal", 1.0f),
-        LIGHT("light", "Leicht", 1.25f),
-        STRONG("strong", "Stark", 1.55f);
+        LIGHT("light", "Leicht", 1.10f),
+        MEDIUM("medium", "Mittel", 1.25f),
+        STRONG("strong", "Stark", 1.40f);
 
         private final String key;
         private final String label;
