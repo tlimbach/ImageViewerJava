@@ -309,8 +309,15 @@ public class ThumbnailPanel extends JPanel {
         if (selectedLabel.getWidth() <= 0 || selectedLabel.getHeight() <= 0) return;
 
         pendingScrollToSelectedThumbnail = false;
-        Rectangle r = selectedLabel.getBounds();
-        Rectangle viewRect = SwingUtilities.convertRectangle(selectedLabel.getParent(), r, scrollPane.getViewport());
+        scrollLabelToVisible(selectedLabel);
+    }
+
+    private void scrollLabelToVisible(JLabel label) {
+        if (label == null || label.getParent() == null) return;
+        if (label.getWidth() <= 0 || label.getHeight() <= 0) return;
+
+        Rectangle r = label.getBounds();
+        Rectangle viewRect = SwingUtilities.convertRectangle(label.getParent(), r, scrollPane.getViewport());
         viewRect.y = Math.max(viewRect.y - 50, 0);
         viewRect.height += 100;
         scrollPane.getViewport().scrollRectToVisible(viewRect);
@@ -748,7 +755,7 @@ public class ThumbnailPanel extends JPanel {
         for (AnimatedThumbnail thumb : animatedThumbnails) {
             if (file.getName().equals(thumb.filename)) {
                 selectAndOpenThumbnail(thumb.label);
-                scrollSelectedThumbnailToVisible();
+                scrollLabelToVisible(thumb.label);
                 return;
             }
         }
@@ -773,7 +780,7 @@ public class ThumbnailPanel extends JPanel {
                 AnimatedThumbnail thumb = animatedThumbnails.get(i);
                 if (thumb.filename != null && TagHandler.getInstance().getTagsForFile(thumb.filename).isEmpty()) {
                     selectAndOpenThumbnail(thumb.label);
-                    scrollSelectedThumbnailToVisible();
+                    scrollLabelToVisible(thumb.label);
                     return;
                 }
             }
