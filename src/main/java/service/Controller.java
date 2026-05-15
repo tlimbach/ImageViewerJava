@@ -28,8 +28,6 @@ public class Controller {
     private ThumbnailPanel thumbnailPanel;
     private MediaView mediaView;
 
-    private List<File> mediaFiles = new ArrayList<>();
-
     public ExecutorService getExecutorService() {
         return ex;
     }
@@ -60,9 +58,9 @@ public class Controller {
                 thumbnailPanel.reloadDirectory();
                 return;
             }
-            List<File> files = filePaths.isEmpty()
-                    ? mediaFiles
-                    : filePaths.stream().map(File::new).collect(Collectors.toList());
+            List<File> files = filePaths.stream()
+                    .map(this::resolveSelectedFile)
+                    .collect(Collectors.toList());
 
 
             thumbnailPanel.populate(files);
@@ -71,6 +69,19 @@ public class Controller {
 
         if (SwingUtilities.isEventDispatchThread()) new Thread(task).start();
         else task.run();
+    }
+
+    private File resolveSelectedFile(String filePath) {
+        File file = new File(filePath);
+        if (file.isAbsolute()) {
+            return file;
+        }
+
+        Path currentDirectory = AppState.get().getCurrentDirectory();
+        if (currentDirectory == null) {
+            return file;
+        }
+        return currentDirectory.resolve(filePath).toFile();
     }
 
     public void handleMedia(File file, boolean isDoubleClick) {
