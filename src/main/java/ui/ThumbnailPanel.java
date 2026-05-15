@@ -907,10 +907,22 @@ public class ThumbnailPanel extends JPanel {
             if (!(view instanceof JPanel gridPanel)) return;
 
             boolean changed = false;
+            boolean removedActiveThumbnail = false;
+            int firstRemovedIndex = Integer.MAX_VALUE;
+            File currentFile = AppState.get().getCurrentFile();
             List<AnimatedThumbnail> removedThumbnails = new ArrayList<>();
             for (AnimatedThumbnail thumb : new ArrayList<>(animatedThumbnails)) {
                 if (thumb.filename == null || namesToKeep.contains(thumb.filename)) {
                     continue;
+                }
+
+                int removedIndex = animatedThumbnails.indexOf(thumb);
+                if (removedIndex >= 0) {
+                    firstRemovedIndex = Math.min(firstRemovedIndex, removedIndex);
+                }
+                if (thumb.label == selectedLabel || thumb.label == myLabel
+                        || (currentFile != null && currentFile.getName().equals(thumb.filename))) {
+                    removedActiveThumbnail = true;
                 }
 
                 thumb.stop();
@@ -930,6 +942,10 @@ public class ThumbnailPanel extends JPanel {
             if (!changed) return;
 
             animatedThumbnails.removeAll(removedThumbnails);
+            if (removedActiveThumbnail && !animatedThumbnails.isEmpty()) {
+                int nextIndex = Math.min(firstRemovedIndex, animatedThumbnails.size() - 1);
+                selectAndOpenThumbnail(animatedThumbnails.get(nextIndex).label);
+            }
             synchronized (thumbnailLoadQueue) {
                 thumbnailLoadQueue.removeIf(file -> file == null || !namesToKeep.contains(file.getName()));
             }
@@ -940,6 +956,24 @@ public class ThumbnailPanel extends JPanel {
             gridPanel.repaint();
             updateVisibleThumbnails();
         });
+    }
+
+    private void selectAndOpenThumbnail(JLabel label) {
+        if (label == null) return;
+
+        if (selectedLabel != null && selectedLabel != label) {
+            selectedLabel.setBorder(null);
+        }
+
+        selectedLabel = label;
+        myLabel = label;
+        selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 4));
+
+        File file = (File) label.getClientProperty("file");
+        if (file != null) {
+            AppState.get().setCurrentFile(file);
+            Controller.getInstance().handleMedia(file, false);
+        }
     }
 
     private List<File> prioritizeMediaLoadOrder(List<File> mediaFiles) {
