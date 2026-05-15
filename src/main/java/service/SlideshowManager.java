@@ -24,10 +24,8 @@ public class SlideshowManager {
     private boolean interactionHold;
 
     private final Timer repeatCheckTimer = new Timer(500, e -> checkRepeatVideo());
-    private boolean moveImages;
 
-    public void start(List<File> files, int durationSeconds, int totalDurationMinutes, boolean moveImages) {
-        this.moveImages = moveImages;
+    public void start(List<File> files, int durationSeconds, int totalDurationMinutes) {
         if (files == null || files.isEmpty()) return;
 
         stopTimersOnly();
@@ -41,6 +39,7 @@ public class SlideshowManager {
         this.heldImageRemainingMillis = 0;
         this.interactionHoldStarted = 0;
 
+        mediaView.resetSlideshowTransitionState();
         mediaView.startSlideshowProgress(totalDurationMinutes * 60_000L);
         showCurrent();
         repeatCheckTimer.start();
@@ -115,6 +114,7 @@ public class SlideshowManager {
         mediaView.stop();
         mediaView.getLeftBar().stop();
         mediaView.stopSlideshowProgress();
+        mediaView.resetSlideshowTransitionState();
     }
 
     private void stopTimersOnly() {
@@ -161,10 +161,5 @@ public class SlideshowManager {
 
     public long getDurationMillis() {
         return durationSeconds*1000;
-    }
-
-
-    public boolean isMoveImages() {
-        return moveImages;
     }
 }

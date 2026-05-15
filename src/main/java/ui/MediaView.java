@@ -3,6 +3,9 @@ package ui;
 import event.*;
 import model.AppState;
 import service.*;
+import ui.transition.SlideshowTransitionImage;
+import ui.transition.SlideshowTransitionPanel;
+import ui.transition.SlideshowTransitionType;
 import uk.co.caprica.vlcj.player.base.MediaPlayer;
 import uk.co.caprica.vlcj.player.base.MediaPlayerEventAdapter;
 import uk.co.caprica.vlcj.player.base.State;
@@ -24,6 +27,7 @@ import java.util.concurrent.CompletableFuture;
 public class MediaView {
 
     private static final MediaView instance = new MediaView();
+    private static final int IMAGE_TRANSITION_MS = 650;
     private File currentFile;
     private RangeHandler.Range range;
 
@@ -38,6 +42,8 @@ public class MediaView {
     private final SlideshowProgressOverlay slideshowProgressOverlay = new SlideshowProgressOverlay();
     private final SlideshowCountdownOverlay slideshowCountdownOverlay = new SlideshowCountdownOverlay();
     private boolean videoOverlayActive;
+    private SlideshowTransitionImage lastSlideshowImage;
+    private int slideshowTransitionGeneration;
     public static MediaView getInstance() {
         return instance;
     }
@@ -345,30 +351,27 @@ public class MediaView {
         int maxHeight = frame.getHeight();
 
         if (Controller.getInstance().getControlPanel().getSlideshowManager().isRunning()) {
-            for (Component comp : stackPanel.getComponents()) {
-                if (comp instanceof AnimatedImagePanel) {
-                    stackPanel.remove(comp);
-                    break;
-                }
-            }
+            removeSlideshowImagePanels();
             double scale = Math.max(
                     (double) maxWidth / rotatedImage.getWidth(),
                     (double) maxHeight / rotatedImage.getHeight()
             );
             int newWidth = (int) Math.round(rotatedImage.getWidth() * scale);
             int newHeight = (int) Math.round(rotatedImage.getHeight() * scale);
+            ImageZoomHandler.ZoomSelection zoomSelection = ImageZoomHandler.getInstance().getZoomForFile(file);
             AnimatedImagePanel animatedPanel = new AnimatedImagePanel(
                     rotatedImage,
                     newWidth,
                     newHeight,
                     file,
-                    ImageZoomHandler.getInstance().getZoomForFile(file),
+                    zoomSelection,
                     Controller.getInstance().getControlPanel().getSlideshowManager()::holdImageForInteraction,
                     Controller.getInstance().getControlPanel().getSlideshowManager()::resumeAfterInteraction
             );
             stackPanel.add(animatedPanel, "animated");
-            cardLayout.show(stackPanel, "animated");
+            showSlideshowImageWithTransition(file, rotatedImage, zoomSelection);
         } else {
+            lastSlideshowImage = null;
             imagePanel.setImage(file, rotatedImage);
             cardLayout.show(stackPanel, "image");
         }
@@ -382,7 +385,68 @@ public class MediaView {
         setVideoOverlayActive(false);
     }
 
+    private void removeSlideshowImagePanels() {
+        for (Component comp : stackPanel.getComponents()) {
+            if (comp instanceof AnimatedImagePanel || comp instanceof SlideshowTransitionPanel) {
+                if (comp instanceof SlideshowTransitionPanel transitionPanel) {
+                    transitionPanel.stop();
+                }
+                stackPanel.remove(comp);
+            }
+        }
+    }
+
+    private void showSlideshowImageWithTransition(File file,
+                                                  BufferedImage rotatedImage,
+                                                  ImageZoomHandler.ZoomSelection zoomSelection) {
+        SlideshowTransitionImage nextImage = new SlideshowTransitionImage(
+                ImageEnhancementUtils.adjustSaturation(
+                        rotatedImage,
+                        ImageSaturationHandler.getInstance().getLevelForFile(file)
+                ),
+                zoomSelection
+        );
+
+        SlideshowTransitionImage previousImage = lastSlideshowImage;
+        lastSlideshowImage = nextImage;
+
+        if (previousImage == null) {
+            cardLayout.show(stackPanel, "animated");
+            return;
+        }
+
+        int generation = ++slideshowTransitionGeneration;
+        SlideshowTransitionPanel transitionPanel = new SlideshowTransitionPanel(
+                previousImage,
+                nextImage,
+                SlideshowTransitionType.random(),
+                IMAGE_TRANSITION_MS,
+                () -> finishSlideshowTransition(generation)
+        );
+
+        stackPanel.add(transitionPanel, "transition");
+        cardLayout.show(stackPanel, "transition");
+        stackPanel.revalidate();
+        stackPanel.repaint();
+        transitionPanel.start();
+    }
+
+    private void finishSlideshowTransition(int generation) {
+        if (generation != slideshowTransitionGeneration) return;
+
+        cardLayout.show(stackPanel, "animated");
+        for (Component comp : stackPanel.getComponents()) {
+            if (comp instanceof SlideshowTransitionPanel transitionPanel) {
+                transitionPanel.stop();
+                stackPanel.remove(comp);
+            }
+        }
+        stackPanel.revalidate();
+        stackPanel.repaint();
+    }
+
     private void showVideo(File file, boolean autostart) {
+        lastSlideshowImage = null;
         cardLayout.show(stackPanel, "video");
         setVideoOverlayActive(true);
         updateOverlayBounds();
@@ -508,6 +572,19 @@ public class MediaView {
     public void stopSlideshowProgress() {
         slideshowProgressOverlay.stop();
         slideshowCountdownOverlay.stop();
+    }
+
+    public void resetSlideshowTransitionState() {
+        lastSlideshowImage = null;
+        slideshowTransitionGeneration++;
+        for (Component comp : stackPanel.getComponents()) {
+            if (comp instanceof SlideshowTransitionPanel transitionPanel) {
+                transitionPanel.stop();
+                stackPanel.remove(comp);
+            }
+        }
+        stackPanel.revalidate();
+        stackPanel.repaint();
     }
 
     public void hideFrame() {

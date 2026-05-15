@@ -357,7 +357,6 @@ public class ControlPanel extends JPanel {
         });
         JButton btnStart = new JButton("Start");
         JButton btnStop = new JButton("Stop");
-        JCheckBox cbxMoveImage = new JCheckBox("Move..");
 
         btnStart.addActionListener(e -> {
             try {
@@ -366,7 +365,7 @@ public class ControlPanel extends JPanel {
                 if (duration <= 0 || totalMinutes <= 0) {
                     throw new NumberFormatException();
                 }
-                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration, totalMinutes, cbxMoveImage.isSelected());
+                slideshowManager.start(controller.getCurrentlyDisplayedFiles(), duration, totalMinutes);
             } catch (NumberFormatException ex) {
                 JOptionPane.showMessageDialog(this, "Bitte gültige Zahlen für Bilddauer und Gesamtdauer eingeben.", "Fehler", JOptionPane.ERROR_MESSAGE);
             }
@@ -374,7 +373,7 @@ public class ControlPanel extends JPanel {
 
         btnStop.addActionListener(e -> slideshowManager.stop());
 
-        add(H.makeHorizontalPanel(btnStart, btnStop, cbxMoveImage));
+        add(H.makeHorizontalPanel(btnStart, btnStop));
         add(H.makeHorizontalPanel(new JLabel("Dauer"), txtDuration, new JLabel("Gesamt"), txtSlideshowTotalMinutes));
     }
 

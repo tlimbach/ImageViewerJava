@@ -30,19 +30,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class AnimatedImagePanel extends JPanel {
-    // ------------------ STELLSCHRAUBEN ------------------
-//    private static final double BASE_SCALE_MULTIPLIER = 1.8;     // Basisvergrößerung über die Zielgröße hinaus
-//    private static final double MAX_ZOOM_VARIATION = -0.1;       // Zoomschwankung (z. B. 0.15 = ±15%)
-//    private static final double ZOOM_SPEED = 0.008;              // Geschwindigkeit des Zooms
-//    private static final double PAN_SPEED_X = 0.0035;             // Geschwindigkeit horizontales Schwenken
-//    private static final double PAN_SPEED_Y = 0.0035;             // Geschwindigkeit vertikales Schwenken
-
-    // Stellschrauben
     private static final double BASE_SCALE_MULTIPLIER = 1.0; // exakte Zielgröße am Start
-    private static final double MAX_ZOOM_VARIATION = 0.25;    // nur positive Variation (reinzoomen)
-    private static final double ZOOM_SPEED = 0.003;
-    private static final double PAN_SPEED_X = 0.005;
-    private static final double PAN_SPEED_Y = 0.005;
     private static final int OVERLAY_BUTTON_WIDTH = 150;
     private static final int MENU_HEIGHT = 34;
     private static final int MENU_MARGIN = 16;
@@ -54,11 +42,7 @@ public class AnimatedImagePanel extends JPanel {
     private static final String BEAUTIFULL_TAG = "beautifull";
     private static final String ART_TAG = "art";
 
-    private static double initialZoom = 0;
-
-    // ------------------ INSTANZVARIABLEN ------------------
     private final BufferedImage image;
-    private final Timer animationTimer;
     private final int baseWidth;
     private final int baseHeight;
     private final File file;
@@ -82,11 +66,6 @@ public class AnimatedImagePanel extends JPanel {
     private BufferedImage displayImage;
     private boolean updatingSaturationCombo;
 
-    private double zoomPhase = 0;
-    private double panPhaseX = 0;
-    private double panPhaseY = 1.7;
-
-    private double alteZoom = 0;
     private Point dragStart;
     private Rectangle selection;
     private Rectangle2D renderedImageBounds;
@@ -105,7 +84,6 @@ public class AnimatedImagePanel extends JPanel {
                               ImageZoomHandler.ZoomSelection zoomSelection,
                               Runnable onInteractionStarted,
                               Runnable onInteractionFinished) {
-        initialZoom = 0;
         this.image = toBufferedImage(image);
         this.displayImage = this.image;
         this.baseWidth = newWidth;
@@ -124,17 +102,6 @@ public class AnimatedImagePanel extends JPanel {
         installMouseSelection();
         overlayHideTimer = new Timer(1000, e -> hideOverlayIfPointerIsAway());
         overlayHideTimer.setRepeats(false);
-
-        animationTimer = new Timer(15, e -> {
-            zoomPhase += ZOOM_SPEED;
-            panPhaseX += PAN_SPEED_X;
-            panPhaseY += PAN_SPEED_Y;
-            repaint();
-        });
-
-        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
-               animationTimer.start();
-        }
     }
 
     private void installResetButton() {
@@ -357,18 +324,12 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void beginInteraction() {
-        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
-            animationTimer.stop();
-        }
         if (onInteractionStarted != null) {
             onInteractionStarted.run();
         }
     }
 
     private void finishInteraction() {
-        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
-            animationTimer.start();
-        }
         if (onInteractionFinished != null) {
             onInteractionFinished.run();
         }
@@ -647,28 +608,6 @@ public class AnimatedImagePanel extends JPanel {
         g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
         g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
 
-//        double zoomFactor = 1.0 + Math.sin(zoomPhase) * MAX_ZOOM_VARIATION;
-//        double zoom = baseScale * zoomFactor;
-
-        double zoomFactor = 1.0 + (Math.sin(zoomPhase) * 0.5 + 0.5) * MAX_ZOOM_VARIATION;
-
-        if (zoomFactor < alteZoom)
-            zoomFactor = alteZoom;
-
-        alteZoom = zoomFactor;
-
-
-        if (initialZoom == 0)
-            initialZoom = zoomFactor;
-
-        if (zoomFactor < initialZoom)
-            zoomFactor = initialZoom;
-
-        boolean moveImages = Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages();
-        if (!moveImages) {
-            zoomFactor = 1.0;
-        }
-
         int targetWidth = getWidth() > 0 ? getWidth() : baseWidth;
         int targetHeight = getHeight() > 0 ? getHeight() : baseHeight;
 
@@ -676,7 +615,7 @@ public class AnimatedImagePanel extends JPanel {
         double zoom = Math.max(
                 targetWidth / viewRect.getWidth(),
                 targetHeight / viewRect.getHeight()
-        ) * BASE_SCALE_MULTIPLIER * zoomFactor;
+        ) * BASE_SCALE_MULTIPLIER;
 
         int iw = (int) (image.getWidth() * zoom);
         int ih = (int) (image.getHeight() * zoom);
@@ -684,16 +623,8 @@ public class AnimatedImagePanel extends JPanel {
         int baseX = (int) Math.round(-viewRect.getX() * zoom);
         int baseY = (int) Math.round(-viewRect.getY() * zoom);
 
-        int overflowX = Math.max(0, iw - targetWidth);
-        int overflowY = Math.max(0, ih - targetHeight);
-        int maxPanX = overflowX / 2;
-        int maxPanY = overflowY / 6;
-
-        int dx = moveImages ? (int) (Math.sin(panPhaseX) * maxPanX) : 0;
-        int dy = moveImages ? (int) (Math.sin(panPhaseY) * maxPanY) : 0;
-
-        int x = clamp(baseX + dx, targetWidth - iw, 0);
-        int y = clamp(baseY + dy, targetHeight - ih, 0);
+        int x = clamp(baseX, targetWidth - iw, 0);
+        int y = clamp(baseY, targetHeight - ih, 0);
         renderedImageBounds = new Rectangle2D.Double(x, y, iw, ih);
 
         g2.drawImage(displayImage, x, y, iw, ih, null);
@@ -931,17 +862,4 @@ public class AnimatedImagePanel extends JPanel {
         return result;
     }
 
-    @Override
-    public void addNotify() {
-        super.addNotify();
-        if (Controller.getInstance().getControlPanel().getSlideshowManager().isMoveImages()) {
-            animationTimer.start();
-        }
-    }
-
-    @Override
-    public void removeNotify() {
-        animationTimer.stop();
-        super.removeNotify();
-    }
 }
