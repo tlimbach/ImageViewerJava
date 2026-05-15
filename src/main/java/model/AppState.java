@@ -29,7 +29,7 @@ public class AppState {
 
    private boolean isMediaviewFullscreen;
 
-   private boolean nextImageAfterTagging;
+   private boolean nextImageAfterTagging = true;
 
    private BufferedImage preloadedImage;
 

@@ -732,6 +732,54 @@ public class ThumbnailPanel extends JPanel {
         populate(mediaFiles);
     }
 
+    public void reloadDirectoryAndSelect(File fileToSelect) {
+        if (fileToSelect != null) {
+            AppState.get().setCurrentFile(fileToSelect);
+        }
+        reloadDirectory();
+        if (fileToSelect != null) {
+            SwingUtilities.invokeLater(() -> selectAndOpenFile(fileToSelect));
+        }
+    }
+
+    private void selectAndOpenFile(File file) {
+        if (file == null) return;
+
+        for (AnimatedThumbnail thumb : animatedThumbnails) {
+            if (file.getName().equals(thumb.filename)) {
+                selectAndOpenThumbnail(thumb.label);
+                scrollSelectedThumbnailToVisible();
+                return;
+            }
+        }
+    }
+
+    public void selectNextUntaggedAfter(File currentFile) {
+        if (currentFile == null) return;
+
+        runOnEdt(() -> {
+            if (animatedThumbnails.isEmpty()) return;
+
+            int currentIndex = -1;
+            for (int i = 0; i < animatedThumbnails.size(); i++) {
+                if (currentFile.getName().equals(animatedThumbnails.get(i).filename)) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+            if (currentIndex < 0) return;
+
+            for (int i = currentIndex + 1; i < animatedThumbnails.size(); i++) {
+                AnimatedThumbnail thumb = animatedThumbnails.get(i);
+                if (thumb.filename != null && TagHandler.getInstance().getTagsForFile(thumb.filename).isEmpty()) {
+                    selectAndOpenThumbnail(thumb.label);
+                    scrollSelectedThumbnailToVisible();
+                    return;
+                }
+            }
+        });
+    }
+
     void updateVisibleThumbnails() {
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(this::updateVisibleThumbnails);
@@ -1186,6 +1234,7 @@ public class ThumbnailPanel extends JPanel {
         if (targetDirectory == null) return;
 
         int copied = 0;
+        File firstCopiedFile = null;
         List<String> failed = new ArrayList<>();
         List<String> duplicates = new ArrayList<>();
 
@@ -1202,6 +1251,9 @@ public class ThumbnailPanel extends JPanel {
 
                 Path targetPath = uniqueTargetPath(targetDirectory, source.getName());
                 Files.copy(sourcePath, targetPath);
+                if (firstCopiedFile == null) {
+                    firstCopiedFile = targetPath.toFile();
+                }
                 copied++;
                 logDrop("Kopiert: " + sourcePath + " -> " + targetPath);
             } catch (IOException e) {
@@ -1211,7 +1263,7 @@ public class ThumbnailPanel extends JPanel {
         }
 
         if (copied > 0) {
-            reloadDirectory();
+            reloadDirectoryAndSelect(firstCopiedFile);
         }
 
         if (!failed.isEmpty()) {
@@ -1260,7 +1312,7 @@ public class ThumbnailPanel extends JPanel {
                     + ", contentType=" + contentType
                     + ", contentDisposition=" + contentDisposition
                     + " -> " + targetPath);
-            reloadDirectory();
+            reloadDirectoryAndSelect(targetPath.toFile());
         } catch (IOException e) {
             if (tempPath != null) {
                 try {

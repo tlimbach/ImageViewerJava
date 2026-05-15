@@ -291,11 +291,34 @@ public class AnimatedImagePanel extends JPanel {
 
             setSaturationLevel(level);
         });
-        SaturationComboHoverSupport.install(saturationCombo, this::setSaturationLevel);
+        SaturationComboHoverSupport.install(
+                saturationCombo,
+                this::previewSaturationLevel,
+                this::setSaturationLevel,
+                this::restoreSaturationPreview
+        );
     }
 
     private void applySaturationLevel(ImageSaturationHandler.SaturationLevel level) {
         displayImage = ImageEnhancementUtils.adjustSaturation(image, level);
+    }
+
+    private void previewSaturationLevel(ImageSaturationHandler.SaturationLevel level) {
+        if (file == null) return;
+
+        applySaturationLevel(level);
+        showOverlayTemporarily();
+        repaint();
+    }
+
+    private void restoreSaturationPreview(ImageSaturationHandler.SaturationLevel level) {
+        if (file == null) return;
+
+        updatingSaturationCombo = true;
+        saturationCombo.setSelectedItem(level);
+        updatingSaturationCombo = false;
+        applySaturationLevel(level);
+        repaint();
     }
 
     private void setSaturationLevel(ImageSaturationHandler.SaturationLevel level) {

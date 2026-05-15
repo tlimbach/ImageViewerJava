@@ -204,6 +204,7 @@ public class ImageViewer {
         }
 
         int copied = 0;
+        File firstCopiedFile = null;
         List<String> duplicates = new ArrayList<>();
         for (Path source : new LinkedHashMap<>(pendingDesktopImports).keySet()) {
             if (!Files.isRegularFile(source) || !Controller.isImageFile(source.toFile())) continue;
@@ -219,6 +220,9 @@ public class ImageViewer {
                 Path target = uniqueTargetPath(targetDirectory, source.getFileName().toString());
                 Files.copy(source, target);
                 Files.delete(source);
+                if (firstCopiedFile == null) {
+                    firstCopiedFile = target.toFile();
+                }
                 copied++;
                 System.out.println("[DesktopInbox] Desktop-Bild kopiert und vom Desktop geloescht: " + source + " -> " + target);
             } catch (IOException e) {
@@ -230,7 +234,7 @@ public class ImageViewer {
 
         if (copied > 0) {
             lastMediaSnapshot = createMediaSnapshot();
-            thumbnailPanel.reloadDirectory();
+            thumbnailPanel.reloadDirectoryAndSelect(firstCopiedFile);
         }
 
         if (!duplicates.isEmpty()) {
