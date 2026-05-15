@@ -7,6 +7,8 @@ import event.UserKeyboardEvent;
 import model.AppState;
 import service.Controller;
 import service.EventBus;
+import service.ImageEnhancementUtils;
+import service.ImageSaturationHandler;
 import service.ImageZoomHandler;
 import service.TagHandler;
 
@@ -41,12 +43,20 @@ public class ZoomableImagePanel extends JPanel {
     private static final double MIN_WHEEL_ZOOM_SIZE = 0.02;
     private static final int WHEEL_ZOOM_SAVE_DELAY_MS = 250;
     private static final String SPECIAL_TAG = "Ach Du Scheisse";
+    private static final String OK_TAG = "ok";
+    private static final String BEAUTIFULL_TAG = "beautifull";
+    private static final String ART_TAG = "art";
 
     private final OverlayButton displayModeButton = new OverlayButton("Fullsize");
     private final OverlayButton previousButton = new OverlayButton("Vorheriges");
     private final OverlayButton nextButton = new OverlayButton("Nächstes");
     private final OverlayButton resetButton = new OverlayButton("Reset");
     private final OverlayButton specialTagButton = new OverlayButton(SPECIAL_TAG);
+    private final OverlayButton okTagButton = new OverlayButton(OK_TAG);
+    private final OverlayButton beautifullTagButton = new OverlayButton(BEAUTIFULL_TAG);
+    private final OverlayButton artTagButton = new OverlayButton(ART_TAG);
+    private final JComboBox<ImageSaturationHandler.SaturationLevel> saturationCombo =
+            new JComboBox<>(ImageSaturationHandler.SaturationLevel.values());
     private final OverlayButton cropButton = new OverlayButton("Neues Bild");
     private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
     private final OverlayButton closeButton = new OverlayButton("Schließen");
@@ -55,6 +65,7 @@ public class ZoomableImagePanel extends JPanel {
     private final Timer wheelZoomSaveTimer;
 
     private BufferedImage image;
+    private BufferedImage displayImage;
     private File file;
     private ImageZoomHandler.ZoomSelection previewZoom;
     private Point dragStart;
@@ -66,6 +77,7 @@ public class ZoomableImagePanel extends JPanel {
     private ImageZoomHandler.ZoomSelection pendingWheelZoom;
     private boolean overlayVisible;
     private boolean displayFullSize;
+    private boolean updatingSaturationCombo;
 
     public ZoomableImagePanel() {
         setBackground(Color.BLACK);
@@ -92,9 +104,11 @@ public class ZoomableImagePanel extends JPanel {
         resetButton.setFocusable(false);
         resetButton.setVisible(false);
         resetButton.addActionListener(e -> resetZoom());
-        specialTagButton.setFocusable(false);
-        specialTagButton.setVisible(false);
-        specialTagButton.addActionListener(e -> addSpecialTagToCurrentImage());
+        installTagButton(specialTagButton, SPECIAL_TAG);
+        installTagButton(okTagButton, OK_TAG);
+        installTagButton(beautifullTagButton, BEAUTIFULL_TAG);
+        installTagButton(artTagButton, ART_TAG);
+        installSaturationCombo();
         cropButton.setFocusable(false);
         cropButton.setVisible(false);
         cropButton.setToolTipText("Neues Bild aus Auswahl");
@@ -128,6 +142,14 @@ public class ZoomableImagePanel extends JPanel {
         resetButton.addMouseMotionListener(buttonMouseHandler);
         specialTagButton.addMouseListener(buttonMouseHandler);
         specialTagButton.addMouseMotionListener(buttonMouseHandler);
+        okTagButton.addMouseListener(buttonMouseHandler);
+        okTagButton.addMouseMotionListener(buttonMouseHandler);
+        beautifullTagButton.addMouseListener(buttonMouseHandler);
+        beautifullTagButton.addMouseMotionListener(buttonMouseHandler);
+        artTagButton.addMouseListener(buttonMouseHandler);
+        artTagButton.addMouseMotionListener(buttonMouseHandler);
+        saturationCombo.addMouseListener(buttonMouseHandler);
+        saturationCombo.addMouseMotionListener(buttonMouseHandler);
         cropButton.addMouseListener(buttonMouseHandler);
         cropButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
@@ -139,6 +161,10 @@ public class ZoomableImagePanel extends JPanel {
         add(displayModeButton);
         add(resetButton);
         add(specialTagButton);
+        add(okTagButton);
+        add(beautifullTagButton);
+        add(artTagButton);
+        add(saturationCombo);
         add(cropButton);
         add(deleteButton);
         add(closeButton);
@@ -224,6 +250,7 @@ public class ZoomableImagePanel extends JPanel {
         boolean wasOverlayVisible = overlayVisible;
         this.file = file;
         this.image = image;
+        applySaturationLevel(ImageSaturationHandler.getInstance().getLevelForFile(file));
         this.previewZoom = null;
         this.displayFullSize = false;
         this.selection = null;
@@ -273,6 +300,7 @@ public class ZoomableImagePanel extends JPanel {
         if (MediaDeleteSupport.moveFileToTrash(file)) {
             this.file = null;
             this.image = null;
+            this.displayImage = null;
             repaint();
         } else {
             JOptionPane.showMessageDialog(this, "Datei konnte nicht in den Papierkorb verschoben werden.", "Fehler", JOptionPane.ERROR_MESSAGE);
@@ -281,22 +309,72 @@ public class ZoomableImagePanel extends JPanel {
         repaint();
     }
 
-    private void addSpecialTagToCurrentImage() {
+    private void installTagButton(OverlayButton button, String tag) {
+        button.setFocusable(false);
+        button.setVisible(false);
+        button.setCheckboxVisible(true);
+        button.addActionListener(e -> toggleTagForCurrentImage(tag));
+    }
+
+    private void installSaturationCombo() {
+        saturationCombo.setFocusable(false);
+        saturationCombo.setVisible(false);
+        saturationCombo.setToolTipText("Sättigung");
+        saturationCombo.addActionListener(e -> {
+            if (updatingSaturationCombo || file == null) return;
+            Object selected = saturationCombo.getSelectedItem();
+            if (!(selected instanceof ImageSaturationHandler.SaturationLevel level)) return;
+
+            setSaturationLevel(level);
+        });
+        SaturationComboHoverSupport.install(saturationCombo, this::setSaturationLevel);
+    }
+
+    private void applySaturationLevel(ImageSaturationHandler.SaturationLevel level) {
+        displayImage = ImageEnhancementUtils.adjustSaturation(image, level);
+    }
+
+    private void setSaturationLevel(ImageSaturationHandler.SaturationLevel level) {
+        if (file == null) return;
+
+        updatingSaturationCombo = true;
+        saturationCombo.setSelectedItem(level);
+        updatingSaturationCombo = false;
+        ImageSaturationHandler.getInstance().setLevelForFile(file, level);
+        applySaturationLevel(level);
+        showOverlayTemporarily();
+        repaint();
+    }
+
+    private void toggleTagForCurrentImage(String tag) {
         if (file == null) return;
 
         List<String> tags = new ArrayList<>(TagHandler.getInstance().getTagsForFile(file.getName()));
-        if (tags.contains(SPECIAL_TAG)) {
-            tags.removeIf(SPECIAL_TAG::equals);
+        if (tags.contains(tag)) {
+            tags.removeIf(tag::equals);
         } else {
-            tags.add(SPECIAL_TAG);
+            tags.add(tag);
         }
         TagHandler.getInstance().setTagsToFile(tags, file.getName());
         EventBus.get().publish(new TagsChangedEvent());
         showOverlayTemporarily();
     }
 
-    private boolean hasSpecialTag() {
-        return file != null && TagHandler.getInstance().getTagsForFile(file.getName()).contains(SPECIAL_TAG);
+    private boolean hasTag(String tag) {
+        return file != null && TagHandler.getInstance().getTagsForFile(file.getName()).contains(tag);
+    }
+
+    private void updateTagButton(OverlayButton button, String tag, boolean visible) {
+        button.setVisible(visible && file != null);
+        button.setTextColor(Color.BLACK);
+        button.setChecked(hasTag(tag));
+    }
+
+    private void updateSaturationCombo(boolean visible) {
+        saturationCombo.setVisible(visible && file != null);
+        updatingSaturationCombo = true;
+        saturationCombo.setSelectedItem(ImageSaturationHandler.getInstance().getLevelForFile(file));
+        updatingSaturationCombo = false;
     }
 
     private void closeMediaView() {
@@ -355,12 +433,15 @@ public class ZoomableImagePanel extends JPanel {
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
-        specialTagButton.setVisible(visible && file != null);
+        updateTagButton(specialTagButton, SPECIAL_TAG, visible);
+        updateTagButton(okTagButton, OK_TAG, visible);
+        updateTagButton(beautifullTagButton, BEAUTIFULL_TAG, visible);
+        updateTagButton(artTagButton, ART_TAG, visible);
+        updateSaturationCombo(visible);
         cropButton.setVisible(visible && file != null);
         cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
         closeButton.setVisible(visible && file != null);
-        specialTagButton.setTextColor(hasSpecialTag() ? Color.LIGHT_GRAY : Color.BLACK);
         repaint();
     }
 
@@ -662,13 +743,13 @@ public class ZoomableImagePanel extends JPanel {
         int y = MENU_MARGIN;
         previousButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                y + (MENU_HEIGHT + MENU_GAP) * 4,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         nextButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
-                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                y + (MENU_HEIGHT + MENU_GAP) * 4,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -685,21 +766,45 @@ public class ZoomableImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        cropButton.setBounds(
+        okTagButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
                 y + MENU_HEIGHT + MENU_GAP,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        deleteButton.setBounds(
+        beautifullTagButton.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        artTagButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        saturationCombo.setBounds(
                 x,
                 y + (MENU_HEIGHT + MENU_GAP) * 3,
+                OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
+                MENU_HEIGHT
+        );
+        cropButton.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 5,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        deleteButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + (MENU_HEIGHT + MENU_GAP) * 5,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         closeButton.setBounds(
-                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
-                y + (MENU_HEIGHT + MENU_GAP) * 3,
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 6,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -715,25 +820,29 @@ public class ZoomableImagePanel extends JPanel {
 
     private Dimension getOverlayMenuSize() {
         int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
-        int height = MENU_HEIGHT * 4 + MENU_GAP * 3;
+        int height = MENU_HEIGHT * 7 + MENU_GAP * 6;
         return new Dimension(width, height);
     }
 
     private Rectangle getVisibleMenuBounds() {
-        JButton[] buttons = {
+        JComponent[] buttons = {
                 previousButton,
                 nextButton,
                 displayModeButton,
                 resetButton,
                 specialTagButton,
+                okTagButton,
+                beautifullTagButton,
+                artTagButton,
+                saturationCombo,
                 cropButton,
                 deleteButton,
                 closeButton
         };
         Rectangle result = null;
-        for (JButton button : buttons) {
-            if (!button.isVisible()) continue;
-            result = result == null ? button.getBounds() : result.union(button.getBounds());
+        for (JComponent component : buttons) {
+            if (!component.isVisible()) continue;
+            result = result == null ? component.getBounds() : result.union(component.getBounds());
         }
         return result;
     }
@@ -750,7 +859,7 @@ public class ZoomableImagePanel extends JPanel {
 
         Rectangle2D imageBounds = getRenderedImageBounds();
         g2.drawImage(
-                image,
+                displayImage,
                 (int) Math.round(imageBounds.getX()),
                 (int) Math.round(imageBounds.getY()),
                 (int) Math.round(imageBounds.getWidth()),
@@ -869,6 +978,8 @@ public class ZoomableImagePanel extends JPanel {
         private static final Color PRESSED_BACKGROUND = new Color(225, 225, 225, 220);
         private static final Color BORDER_COLOR = new Color(0, 0, 0, 80);
         private Color textColor = Color.BLACK;
+        private boolean checkboxVisible;
+        private boolean checked;
 
         OverlayButton(String text) {
             super(text);
@@ -877,6 +988,17 @@ public class ZoomableImagePanel extends JPanel {
             setBorderPainted(false);
             setFocusPainted(false);
             setForeground(Color.BLACK);
+        }
+
+        void setCheckboxVisible(boolean checkboxVisible) {
+            this.checkboxVisible = checkboxVisible;
+            setMargin(new Insets(2, 8, 2, checkboxVisible ? 24 : 8));
+            repaint();
+        }
+
+        void setChecked(boolean checked) {
+            this.checked = checked;
+            repaint();
         }
 
         void setTextColor(Color textColor) {
@@ -906,6 +1028,30 @@ public class ZoomableImagePanel extends JPanel {
 
             setForeground(textColor);
             super.paintComponent(g);
+
+            if (checkboxVisible) {
+                paintCheckbox(g);
+            }
+        }
+
+        private void paintCheckbox(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+            int size = 12;
+            int x = getWidth() - size - 8;
+            int y = (getHeight() - size) / 2;
+
+            g2.setColor(new Color(255, 255, 255, 180));
+            g2.fillRoundRect(x, y, size, size, 3, 3);
+            g2.setColor(textColor);
+            g2.drawRoundRect(x, y, size, size, 3, 3);
+
+            if (checked) {
+                g2.setStroke(new BasicStroke(2f, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+                g2.drawLine(x + 3, y + 6, x + 5, y + 9);
+                g2.drawLine(x + 5, y + 9, x + 10, y + 3);
+            }
+            g2.dispose();
         }
     }
 }

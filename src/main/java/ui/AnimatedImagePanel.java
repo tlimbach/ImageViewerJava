@@ -4,6 +4,8 @@ import event.TagsChangedEvent;
 import model.AppState;
 import service.Controller;
 import service.EventBus;
+import service.ImageEnhancementUtils;
+import service.ImageSaturationHandler;
 import service.ImageZoomHandler;
 import service.TagHandler;
 
@@ -46,6 +48,9 @@ public class AnimatedImagePanel extends JPanel {
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
     private static final String SPECIAL_TAG = "Ach Du Scheisse";
+    private static final String OK_TAG = "ok";
+    private static final String BEAUTIFULL_TAG = "beautifull";
+    private static final String ART_TAG = "art";
 
     private static double initialZoom = 0;
 
@@ -60,12 +65,19 @@ public class AnimatedImagePanel extends JPanel {
     private final OverlayButton displayModeButton = new OverlayButton("Fullsize");
     private final OverlayButton resetButton = new OverlayButton("Reset");
     private final OverlayButton specialTagButton = new OverlayButton(SPECIAL_TAG);
+    private final OverlayButton okTagButton = new OverlayButton(OK_TAG);
+    private final OverlayButton beautifullTagButton = new OverlayButton(BEAUTIFULL_TAG);
+    private final OverlayButton artTagButton = new OverlayButton(ART_TAG);
+    private final JComboBox<ImageSaturationHandler.SaturationLevel> saturationCombo =
+            new JComboBox<>(ImageSaturationHandler.SaturationLevel.values());
     private final OverlayButton cropButton = new OverlayButton("Neues Bild");
     private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
     private final OverlayButton closeButton = new OverlayButton("Schließen");
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
     private ImageZoomHandler.ZoomSelection zoomSelection;
+    private BufferedImage displayImage;
+    private boolean updatingSaturationCombo;
 
     private double zoomPhase = 0;
     private double panPhaseX = 0;
@@ -92,6 +104,7 @@ public class AnimatedImagePanel extends JPanel {
                               Runnable onInteractionFinished) {
         initialZoom = 0;
         this.image = toBufferedImage(image);
+        this.displayImage = this.image;
         this.baseWidth = newWidth;
         this.baseHeight = newHeight;
         this.file = file;
@@ -104,6 +117,7 @@ public class AnimatedImagePanel extends JPanel {
         setOpaque(true);
         setDoubleBuffered(true);
         installResetButton();
+        applySaturationLevel(ImageSaturationHandler.getInstance().getLevelForFile(file));
         installMouseSelection();
         overlayHideTimer = new Timer(1000, e -> hideOverlayIfPointerIsAway());
         overlayHideTimer.setRepeats(false);
@@ -136,13 +150,11 @@ public class AnimatedImagePanel extends JPanel {
             repaint();
             finishInteraction();
         });
-        specialTagButton.setFocusable(false);
-        specialTagButton.setVisible(false);
-        specialTagButton.addActionListener(e -> {
-            beginInteraction();
-            addSpecialTagToCurrentImage();
-            finishInteraction();
-        });
+        installTagButton(specialTagButton, SPECIAL_TAG);
+        installTagButton(okTagButton, OK_TAG);
+        installTagButton(beautifullTagButton, BEAUTIFULL_TAG);
+        installTagButton(artTagButton, ART_TAG);
+        installSaturationCombo();
         cropButton.setFocusable(false);
         cropButton.setVisible(false);
         cropButton.setToolTipText("Neues Bild aus Auswahl");
@@ -172,6 +184,14 @@ public class AnimatedImagePanel extends JPanel {
         resetButton.addMouseMotionListener(buttonMouseHandler);
         specialTagButton.addMouseListener(buttonMouseHandler);
         specialTagButton.addMouseMotionListener(buttonMouseHandler);
+        okTagButton.addMouseListener(buttonMouseHandler);
+        okTagButton.addMouseMotionListener(buttonMouseHandler);
+        beautifullTagButton.addMouseListener(buttonMouseHandler);
+        beautifullTagButton.addMouseMotionListener(buttonMouseHandler);
+        artTagButton.addMouseListener(buttonMouseHandler);
+        artTagButton.addMouseMotionListener(buttonMouseHandler);
+        saturationCombo.addMouseListener(buttonMouseHandler);
+        saturationCombo.addMouseMotionListener(buttonMouseHandler);
         cropButton.addMouseListener(buttonMouseHandler);
         cropButton.addMouseMotionListener(buttonMouseHandler);
         deleteButton.addMouseListener(buttonMouseHandler);
@@ -181,6 +201,10 @@ public class AnimatedImagePanel extends JPanel {
         add(displayModeButton);
         add(resetButton);
         add(specialTagButton);
+        add(okTagButton);
+        add(beautifullTagButton);
+        add(artTagButton);
+        add(saturationCombo);
         add(cropButton);
         add(deleteButton);
         add(closeButton);
@@ -259,6 +283,47 @@ public class AnimatedImagePanel extends JPanel {
         repaint();
     }
 
+    private void installTagButton(OverlayButton button, String tag) {
+        button.setFocusable(false);
+        button.setVisible(false);
+        button.setCheckboxVisible(true);
+        button.addActionListener(e -> {
+            beginInteraction();
+            toggleTagForCurrentImage(tag);
+            finishInteraction();
+        });
+    }
+
+    private void installSaturationCombo() {
+        saturationCombo.setFocusable(false);
+        saturationCombo.setVisible(false);
+        saturationCombo.setToolTipText("Sättigung");
+        saturationCombo.addActionListener(e -> {
+            if (updatingSaturationCombo || file == null) return;
+            Object selected = saturationCombo.getSelectedItem();
+            if (!(selected instanceof ImageSaturationHandler.SaturationLevel level)) return;
+
+            setSaturationLevel(level);
+        });
+        SaturationComboHoverSupport.install(saturationCombo, this::setSaturationLevel);
+    }
+
+    private void applySaturationLevel(ImageSaturationHandler.SaturationLevel level) {
+        displayImage = ImageEnhancementUtils.adjustSaturation(image, level);
+    }
+
+    private void setSaturationLevel(ImageSaturationHandler.SaturationLevel level) {
+        if (file == null) return;
+
+        updatingSaturationCombo = true;
+        saturationCombo.setSelectedItem(level);
+        updatingSaturationCombo = false;
+        ImageSaturationHandler.getInstance().setLevelForFile(file, level);
+        applySaturationLevel(level);
+        showOverlayTemporarily();
+        repaint();
+    }
+
     private void showDeletePopup(MouseEvent e) {
         if (file == null) return;
         JPopupMenu popup = new JPopupMenu();
@@ -327,22 +392,35 @@ public class AnimatedImagePanel extends JPanel {
         return bounds.contains(point);
     }
 
-    private void addSpecialTagToCurrentImage() {
+    private void toggleTagForCurrentImage(String tag) {
         if (file == null) return;
 
         List<String> tags = new ArrayList<>(TagHandler.getInstance().getTagsForFile(file.getName()));
-        if (tags.contains(SPECIAL_TAG)) {
-            tags.removeIf(SPECIAL_TAG::equals);
+        if (tags.contains(tag)) {
+            tags.removeIf(tag::equals);
         } else {
-            tags.add(SPECIAL_TAG);
+            tags.add(tag);
         }
         TagHandler.getInstance().setTagsToFile(tags, file.getName());
         EventBus.get().publish(new TagsChangedEvent());
         showOverlayTemporarily();
     }
 
-    private boolean hasSpecialTag() {
-        return file != null && TagHandler.getInstance().getTagsForFile(file.getName()).contains(SPECIAL_TAG);
+    private boolean hasTag(String tag) {
+        return file != null && TagHandler.getInstance().getTagsForFile(file.getName()).contains(tag);
+    }
+
+    private void updateTagButton(OverlayButton button, String tag, boolean visible) {
+        button.setVisible(visible && file != null);
+        button.setTextColor(Color.BLACK);
+        button.setChecked(hasTag(tag));
+    }
+
+    private void updateSaturationCombo(boolean visible) {
+        saturationCombo.setVisible(visible && file != null);
+        updatingSaturationCombo = true;
+        saturationCombo.setSelectedItem(ImageSaturationHandler.getInstance().getLevelForFile(file));
+        updatingSaturationCombo = false;
     }
 
     private void setOverlayVisible(boolean visible) {
@@ -353,8 +431,11 @@ public class AnimatedImagePanel extends JPanel {
         updateDisplayModeButton();
         resetButton.setVisible(visible && file != null);
         resetButton.setEnabled(hasZoom);
-        specialTagButton.setVisible(visible && file != null);
-        specialTagButton.setTextColor(hasSpecialTag() ? Color.LIGHT_GRAY : Color.BLACK);
+        updateTagButton(specialTagButton, SPECIAL_TAG, visible);
+        updateTagButton(okTagButton, OK_TAG, visible);
+        updateTagButton(beautifullTagButton, BEAUTIFULL_TAG, visible);
+        updateTagButton(artTagButton, ART_TAG, visible);
+        updateSaturationCombo(visible);
         cropButton.setVisible(visible && file != null);
         cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
@@ -586,7 +667,7 @@ public class AnimatedImagePanel extends JPanel {
         int y = clamp(baseY + dy, targetHeight - ih, 0);
         renderedImageBounds = new Rectangle2D.Double(x, y, iw, ih);
 
-        g2.drawImage(image, x, y, iw, ih, null);
+        g2.drawImage(displayImage, x, y, iw, ih, null);
 
         if (selection != null && selection.width > 0 && selection.height > 0) {
             paintSelection(g2);
@@ -735,21 +816,45 @@ public class AnimatedImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        cropButton.setBounds(
+        okTagButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
                 y + MENU_HEIGHT + MENU_GAP,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        deleteButton.setBounds(
+        beautifullTagButton.setBounds(
                 x,
                 y + (MENU_HEIGHT + MENU_GAP) * 2,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
-        closeButton.setBounds(
+        artTagButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
                 y + (MENU_HEIGHT + MENU_GAP) * 2,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        saturationCombo.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 3,
+                OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
+                MENU_HEIGHT
+        );
+        cropButton.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 4,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        deleteButton.setBounds(
+                x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
+                y + (MENU_HEIGHT + MENU_GAP) * 4,
+                OVERLAY_BUTTON_WIDTH,
+                MENU_HEIGHT
+        );
+        closeButton.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 5,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -765,23 +870,27 @@ public class AnimatedImagePanel extends JPanel {
 
     private Dimension getOverlayMenuSize() {
         int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
-        int height = MENU_HEIGHT * 3 + MENU_GAP * 2;
+        int height = MENU_HEIGHT * 6 + MENU_GAP * 5;
         return new Dimension(width, height);
     }
 
     private Rectangle getVisibleMenuBounds() {
-        JButton[] buttons = {
+        JComponent[] buttons = {
                 displayModeButton,
                 resetButton,
                 specialTagButton,
+                okTagButton,
+                beautifullTagButton,
+                artTagButton,
+                saturationCombo,
                 cropButton,
                 deleteButton,
                 closeButton
         };
         Rectangle result = null;
-        for (JButton button : buttons) {
-            if (!button.isVisible()) continue;
-            result = result == null ? button.getBounds() : result.union(button.getBounds());
+        for (JComponent component : buttons) {
+            if (!component.isVisible()) continue;
+            result = result == null ? component.getBounds() : result.union(component.getBounds());
         }
         return result;
     }
