@@ -618,6 +618,10 @@ public class MediaView {
                 && Controller.isImageFile(file);
     }
 
+    public boolean isVisible() {
+        return frame.isVisible();
+    }
+
     public void toggleImageDisplayMode(File _file) {
         File file = AppState.get().getFileForCurrentDirectory(_file);
         if (file == null || !Controller.isImageFile(file)) return;

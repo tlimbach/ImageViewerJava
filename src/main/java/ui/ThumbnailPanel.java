@@ -754,7 +754,10 @@ public class ThumbnailPanel extends JPanel {
 
         for (AnimatedThumbnail thumb : animatedThumbnails) {
             if (file.getName().equals(thumb.filename)) {
-                selectAndOpenThumbnail(thumb.label);
+                selectThumbnailLabel(thumb.label, false);
+                if (MediaView.getInstance().isVisible()) {
+                    Controller.getInstance().handleMedia(file, false);
+                }
                 scrollLabelToVisible(thumb.label);
                 return;
             }
