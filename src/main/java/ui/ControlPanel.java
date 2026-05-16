@@ -514,8 +514,7 @@ public class ControlPanel extends JPanel {
 
     private void openBookmarkDialog() {
         if (bookmarkDialog != null && bookmarkDialog.isDisplayable()) {
-            bookmarkDialog.toFront();
-            bookmarkDialog.requestFocus();
+            bookmarkDialog.closeDialog();
             return;
         }
 
@@ -524,7 +523,6 @@ public class ControlPanel extends JPanel {
         MediaView.getInstance().setDisplayBlocked(true);
         bookmarkDialog = new BookmarkDialog(
                 parent,
-                selected -> Controller.getInstance().getThumbnailPanel().selectAndDisplayFile(selected),
                 () -> {
                     MediaView.getInstance().setDisplayBlocked(false);
                     bookmarkDialog = null;

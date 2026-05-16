@@ -15,7 +15,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Consumer;
 
 public class BookmarkDialog extends JDialog {
 
@@ -25,17 +24,14 @@ public class BookmarkDialog extends JDialog {
     private final DefaultListModel<BookmarkService.Bookmark> listModel = new DefaultListModel<>();
     private final JList<BookmarkService.Bookmark> bookmarkList = new JList<>(listModel);
     private final JPanel thumbnailPanel = new JPanel(new GridLayout(0, 3, 6, 6));
-    private final JCheckBox syncMainViewCheckbox = new JCheckBox("synchronisieren mit Hauptansicht");
     private final Map<String, JLabel> labelsByFilename = new HashMap<>();
-    private final Consumer<File> okHandler;
     private final Runnable closeHandler;
     private boolean updatingSelection;
     private File selectedFile;
     private boolean closed;
 
-    public BookmarkDialog(Window owner, Consumer<File> okHandler, Runnable closeHandler) {
+    public BookmarkDialog(Window owner, Runnable closeHandler) {
         super(owner, "Bookmarks", ModalityType.MODELESS);
-        this.okHandler = okHandler;
         this.closeHandler = closeHandler;
 
         setLayout(new BorderLayout(8, 8));
@@ -43,7 +39,7 @@ public class BookmarkDialog extends JDialog {
         addWindowListener(new WindowAdapter() {
             @Override
             public void windowClosing(WindowEvent e) {
-                closeWithoutOk();
+                closeDialog();
             }
         });
 
@@ -67,11 +63,8 @@ public class BookmarkDialog extends JDialog {
 
         JPanel leftActions = new JPanel();
         leftActions.setLayout(new BoxLayout(leftActions, BoxLayout.Y_AXIS));
-        syncMainViewCheckbox.setAlignmentX(Component.LEFT_ALIGNMENT);
         renameButton.setAlignmentX(Component.LEFT_ALIGNMENT);
         deleteButton.setAlignmentX(Component.LEFT_ALIGNMENT);
-        leftActions.add(syncMainViewCheckbox);
-        leftActions.add(Box.createVerticalStrut(4));
         leftActions.add(renameButton);
         leftActions.add(Box.createVerticalStrut(4));
         leftActions.add(deleteButton);
@@ -80,22 +73,11 @@ public class BookmarkDialog extends JDialog {
         JScrollPane thumbnailScrollPane = new JScrollPane(thumbnailPanel);
         thumbnailScrollPane.getVerticalScrollBar().setUnitIncrement(12);
 
-        JButton okButton = new JButton("OK");
-        okButton.addActionListener(e -> closeWithOk());
-        JButton cancelButton = new JButton("Abbrechen");
-        cancelButton.addActionListener(e -> closeWithoutOk());
-
-        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        buttonPanel.add(cancelButton);
-        buttonPanel.add(okButton);
-
         add(leftPanel, BorderLayout.WEST);
         add(thumbnailScrollPane, BorderLayout.CENTER);
-        add(buttonPanel, BorderLayout.SOUTH);
 
-        getRootPane().setDefaultButton(okButton);
         getRootPane().registerKeyboardAction(
-                e -> closeWithoutOk(),
+                e -> closeDialog(),
                 KeyStroke.getKeyStroke("ESCAPE"),
                 JComponent.WHEN_IN_FOCUSED_WINDOW
         );
@@ -247,7 +229,7 @@ public class BookmarkDialog extends JDialog {
     }
 
     private void syncMainViewSelection(File file) {
-        if (!syncMainViewCheckbox.isSelected() || file == null) return;
+        if (file == null) return;
 
         SwingUtilities.invokeLater(() -> Controller.getInstance().getThumbnailPanel().selectFileThumbnail(file));
     }
@@ -372,20 +354,7 @@ public class BookmarkDialog extends JDialog {
         }
     }
 
-    private void closeWithOk() {
-        if (closed) return;
-        closed = true;
-        File file = selectedFile;
-        dispose();
-        if (closeHandler != null) {
-            closeHandler.run();
-        }
-        if (file != null && okHandler != null) {
-            okHandler.accept(file);
-        }
-    }
-
-    private void closeWithoutOk() {
+    public void closeDialog() {
         if (closed) return;
         closed = true;
         selectedFile = null;
