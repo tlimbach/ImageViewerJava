@@ -132,4 +132,45 @@ public class Controller {
         return files;
     }
 
+    public List<File> getSlideshowFilesAroundCurrentSelection(Integer limit) {
+        List<File> files = getCurrentlyDisplayedFiles();
+        if (files.isEmpty() || limit == null || limit <= 0 || files.size() <= limit) {
+            return files;
+        }
+
+        File currentFile = AppState.get().getCurrentFile();
+        int selectedIndex = findFileIndexByName(files, currentFile);
+        if (selectedIndex < 0) {
+            return new ArrayList<>(files.subList(0, limit));
+        }
+
+        int before = (limit - 1) / 2;
+        int start = selectedIndex - before;
+        int end = start + limit;
+
+        if (start < 0) {
+            end = Math.min(files.size(), end - start);
+            start = 0;
+        }
+        if (end > files.size()) {
+            start = Math.max(0, start - (end - files.size()));
+            end = files.size();
+        }
+
+        return new ArrayList<>(files.subList(start, end));
+    }
+
+    private int findFileIndexByName(List<File> files, File file) {
+        if (file == null) return -1;
+
+        String name = file.getName();
+        for (int i = 0; i < files.size(); i++) {
+            File candidate = files.get(i);
+            if (candidate != null && candidate.getName().equals(name)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
 }

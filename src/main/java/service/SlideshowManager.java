@@ -22,6 +22,7 @@ public class SlideshowManager {
     private long heldImageRemainingMillis;
     private long interactionHoldStarted;
     private boolean interactionHold;
+    private File originalSelectedFile;
 
     private final Timer repeatCheckTimer = new Timer(500, e -> checkRepeatVideo());
 
@@ -29,6 +30,7 @@ public class SlideshowManager {
         if (files == null || files.isEmpty()) return;
 
         stopTimersOnly();
+        this.originalSelectedFile = AppState.get().getCurrentFile();
         this.files = new java.util.ArrayList<>(files);
         java.util.Collections.shuffle(this.files);
         this.durationSeconds = durationSeconds;
@@ -115,6 +117,7 @@ public class SlideshowManager {
         mediaView.getLeftBar().stop();
         mediaView.stopSlideshowProgress();
         mediaView.resetSlideshowTransitionState();
+        restoreOriginalThumbnailSelection();
     }
 
     private void stopTimersOnly() {
@@ -161,5 +164,12 @@ public class SlideshowManager {
 
     public long getDurationMillis() {
         return durationSeconds*1000;
+    }
+
+    private void restoreOriginalThumbnailSelection() {
+        if (originalSelectedFile == null) return;
+        if (Controller.getInstance().getThumbnailPanel() == null) return;
+
+        Controller.getInstance().getThumbnailPanel().selectFileThumbnail(originalSelectedFile);
     }
 }

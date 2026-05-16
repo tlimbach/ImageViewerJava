@@ -1,6 +1,5 @@
 package service;
 
-import event.CurrentDirectoryChangedEvent;
 import model.AppState;
 
 import javax.swing.*;
@@ -35,19 +34,11 @@ public class MediaService {
                 .filter(f -> Controller.isImageFile(f) || Controller.isVideoFile(f))
                 .sorted(creationDateDescendingComparator())
                 .collect(Collectors.toList());
-        return applyCurrentMediaLimit(mediaFiles);
+        return mediaFiles;
     }
 
     public static void sortByCreationDateDescending(List<File> files) {
         files.sort(creationDateDescendingComparator());
-    }
-
-    public static List<File> applyCurrentMediaLimit(List<File> files) {
-        Integer limit = AppState.get().getMediaLoadLimit();
-        if (limit == null || limit <= 0 || files.size() <= limit) {
-            return files;
-        }
-        return files.subList(0, limit);
     }
 
     private static Comparator<File> creationDateDescendingComparator() {

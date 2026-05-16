@@ -272,13 +272,21 @@ public class ThumbnailPanel extends JPanel {
         File current = AppState.get().getCurrentFile();
         if (current == null) return;
 
-        for (AnimatedThumbnail thumb : animatedThumbnails) {
-            File thumbFile = (File) thumb.label.getClientProperty("file");
-            if (thumbFile != null && thumbFile.equals(current)) {
-                selectThumbnailLabel(thumb.label, true);
-                break;
+        selectFileThumbnail(current);
+    }
+
+    public void selectFileThumbnail(File file) {
+        if (file == null) return;
+
+        runOnEdt(() -> {
+            for (AnimatedThumbnail thumb : animatedThumbnails) {
+                File thumbFile = (File) thumb.label.getClientProperty("file");
+                if (thumbFile != null && thumbFile.getName().equals(file.getName())) {
+                    selectThumbnailLabel(thumb.label, true);
+                    break;
+                }
             }
-        }
+        });
     }
 
     private void selectThumbnailLabel(JLabel label, boolean scrollToVisible) {
@@ -847,7 +855,7 @@ public class ThumbnailPanel extends JPanel {
 
         List<File> sortedMediaFiles = new ArrayList<>(_mediaFiles);
         MediaService.sortByCreationDateDescending(sortedMediaFiles);
-        final List<File> mediaFiles = new ArrayList<>(MediaService.applyCurrentMediaLimit(sortedMediaFiles));
+        final List<File> mediaFiles = new ArrayList<>(sortedMediaFiles);
         Map<String, Integer> displayOrder = new HashMap<>();
         for (int i = 0; i < mediaFiles.size(); i++) {
             displayOrder.put(mediaFiles.get(i).getName(), i);
