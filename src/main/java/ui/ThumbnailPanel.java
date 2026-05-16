@@ -45,8 +45,8 @@ import java.util.regex.Pattern;
 
 public class ThumbnailPanel extends JPanel {
 
-    private final static int THUMBNAIL_WIDTH = 420;
-    private final static int THUMBNAIL_HEIGHT = (int) (THUMBNAIL_WIDTH * 9.0 / 16);  // ≈ 265
+    static final int THUMBNAIL_WIDTH = 420;
+    static final int THUMBNAIL_HEIGHT = (int) (THUMBNAIL_WIDTH * 9.0 / 16);  // ≈ 265
     private final static int PREVIEW_IMAGE_WIDTH = THUMBNAIL_WIDTH;
     private final static int PREVIEW_IMAGE_HEIGHT = THUMBNAIL_HEIGHT;
 
@@ -279,13 +279,52 @@ public class ThumbnailPanel extends JPanel {
         if (file == null) return;
 
         runOnEdt(() -> {
+            if (selectFileThumbnailInCurrentView(file)) {
+                return;
+            }
+
+            Controller.getInstance().getExecutorService().submit(() -> reloadDirectoryAndSelect(file));
+        });
+    }
+
+    private boolean selectFileThumbnailInCurrentView(File file) {
+        if (file == null) return false;
+
+        if (!SwingUtilities.isEventDispatchThread()) {
+            throw new IllegalStateException("selectFileThumbnailInCurrentView must run on EDT");
+        }
+
+        for (AnimatedThumbnail thumb : animatedThumbnails) {
+            File thumbFile = (File) thumb.label.getClientProperty("file");
+            if (thumbFile != null && thumbFile.getName().equals(file.getName())) {
+                selectThumbnailLabel(thumb.label, true);
+                scrollLabelToVisible(thumb.label);
+                SwingUtilities.invokeLater(this::scrollSelectedThumbnailToVisible);
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public void selectAndDisplayFile(File file) {
+        if (file == null) return;
+
+        runOnEdt(() -> {
             for (AnimatedThumbnail thumb : animatedThumbnails) {
                 File thumbFile = (File) thumb.label.getClientProperty("file");
                 if (thumbFile != null && thumbFile.getName().equals(file.getName())) {
                     selectThumbnailLabel(thumb.label, true);
-                    break;
+                    scrollLabelToVisible(thumb.label);
+                    SwingUtilities.invokeLater(this::scrollSelectedThumbnailToVisible);
+                    Controller.getInstance().handleMedia(file, false);
+                    return;
                 }
             }
+
+            Controller.getInstance().getExecutorService().submit(() -> {
+                reloadDirectoryAndSelect(file);
+                SwingUtilities.invokeLater(() -> Controller.getInstance().handleMedia(file, false));
+            });
         });
     }
 
@@ -324,11 +363,15 @@ public class ThumbnailPanel extends JPanel {
         if (label == null || label.getParent() == null) return;
         if (label.getWidth() <= 0 || label.getHeight() <= 0) return;
 
-        Rectangle r = label.getBounds();
-        Rectangle viewRect = SwingUtilities.convertRectangle(label.getParent(), r, scrollPane.getViewport());
+        JViewport viewport = scrollPane.getViewport();
+        Component view = viewport.getView();
+        if (!(view instanceof JComponent viewComponent)) return;
+
+        viewComponent.revalidate();
+        Rectangle viewRect = SwingUtilities.convertRectangle(label.getParent(), label.getBounds(), viewComponent);
         viewRect.y = Math.max(viewRect.y - 50, 0);
         viewRect.height += 100;
-        scrollPane.getViewport().scrollRectToVisible(viewRect);
+        viewComponent.scrollRectToVisible(viewRect);
     }
 
     private MouseAdapter createMouseListener() {
@@ -347,8 +390,10 @@ public class ThumbnailPanel extends JPanel {
                     clearThumbnailPress();
                     // Kontextmenü wie gehabt
                     JPopupMenu popup = new JPopupMenu();
+                    JMenuItem bookmarkItem = new JMenuItem("Bookmark setzen");
                     JMenuItem deleteItem = new JMenuItem("Bild löschen");
 
+                    bookmarkItem.addActionListener(ev -> setBookmarkForFile(file));
                     deleteItem.addActionListener(ev -> {
                         if (MediaDeleteSupport.moveFileToTrash(file)) {
                             removeThumbnail(label);
@@ -357,6 +402,8 @@ public class ThumbnailPanel extends JPanel {
                         }
                     });
 
+                    popup.add(bookmarkItem);
+                    popup.addSeparator();
                     popup.add(deleteItem);
                     popup.show(e.getComponent(), e.getX(), e.getY());
                     return; // Rechtsklick fertig
@@ -415,6 +462,21 @@ public class ThumbnailPanel extends JPanel {
                 label.setCursor(Cursor.getDefaultCursor());
             }
         };
+    }
+
+    private void setBookmarkForFile(File file) {
+        if (file == null) return;
+
+        String currentLabel = BookmarkService.getInstance().getBookmarkLabel(file);
+        String initialValue = currentLabel.isBlank() ? file.getName() : currentLabel;
+        String label = JOptionPane.showInputDialog(
+                this,
+                "Bezeichnung für Bookmark:",
+                initialValue
+        );
+        if (label == null || label.trim().isEmpty()) return;
+
+        BookmarkService.getInstance().setBookmark(file, label);
     }
 
     private boolean isThumbnailClick(MouseEvent e) {
@@ -1856,7 +1918,11 @@ public class ThumbnailPanel extends JPanel {
         }
     }
 
-    private ThumbnailRenderResult createImageThumbnailIcon(File file) {
+    ThumbnailRenderResult createImageThumbnailIcon(File file) {
+        return createImageThumbnailIcon(file, Controller.getInstance().getControlPanel().getThumbnailZoomMode());
+    }
+
+    ThumbnailRenderResult createImageThumbnailIcon(File file, ThumbnailZoomMode mode) {
         try {
             File resolved = AppState.get().getFileForCurrentDirectory(file);
             BufferedImage original;
@@ -1874,7 +1940,6 @@ public class ThumbnailPanel extends JPanel {
 
             int rotation = RotationHandler.getInstance().getRotation(file);
             BufferedImage rotated = H.rotate(original, rotation);
-            ThumbnailZoomMode mode = Controller.getInstance().getControlPanel().getThumbnailZoomMode();
             return renderImageThumbnail(rotated, file, mode);
         } catch (IOException e) {
             e.printStackTrace();
@@ -2193,7 +2258,7 @@ public class ThumbnailPanel extends JPanel {
         }
     }
 
-    private record ThumbnailRenderResult(
+    record ThumbnailRenderResult(
             ImageIcon icon,
             Rectangle2D visibleRect,
             Rectangle2D imageBounds,

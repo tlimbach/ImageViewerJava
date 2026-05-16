@@ -503,9 +503,28 @@ public class ControlPanel extends JPanel {
 
         add(H.makeHorizontalPanel(cbxShowUntaggedOnly));
         add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
+        JButton btnBookmarks = new JButton("Bookmarks");
+        btnBookmarks.addActionListener(a -> openBookmarkDialog());
+        add(H.makeHorizontalPanel(btnBookmarks));
         tagSelectionPanel = new TagSelectionPanel();
         add(tagSelectionPanel);
         updateUntaggedFilterCheckbox();
+    }
+
+    private void openBookmarkDialog() {
+        Window parent = SwingUtilities.getWindowAncestor(Controller.getInstance().getThumbnailPanel());
+        slideshowManager.stop();
+        MediaView.getInstance().setDisplayBlocked(true);
+        try {
+            BookmarkDialog dialog = new BookmarkDialog(parent);
+            File selected = dialog.showDialog();
+            MediaView.getInstance().setDisplayBlocked(false);
+            if (selected != null) {
+                Controller.getInstance().getThumbnailPanel().selectAndDisplayFile(selected);
+            }
+        } finally {
+            MediaView.getInstance().setDisplayBlocked(false);
+        }
     }
 
     private TagEditDialog createTagEditDialog(Window parent) {

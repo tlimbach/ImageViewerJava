@@ -44,6 +44,7 @@ public class MediaView {
     private boolean videoOverlayActive;
     private SlideshowTransitionImage lastSlideshowImage;
     private int slideshowTransitionGeneration;
+    private boolean displayBlocked;
     public static MediaView getInstance() {
         return instance;
     }
@@ -250,6 +251,8 @@ public class MediaView {
     boolean isFirstAufruf = true;
 
     public void display(File _file, boolean autostart) {
+        if (displayBlocked) return;
+
         File file = AppState.get().getFileForCurrentDirectory(_file);
         if (file == null || !file.exists()) {
             H.out("No file : " + file.getAbsolutePath());
@@ -486,6 +489,8 @@ public class MediaView {
     }
 
     public void play() {
+        if (displayBlocked) return;
+
         MediaPlayer player = mediaPlayerComponent.mediaPlayer();
         if (player.status().isPlayable() && player.status().state() == State.PAUSED) {
             player.controls().play();
@@ -623,6 +628,8 @@ public class MediaView {
     }
 
     public void toggleImageDisplayMode(File _file) {
+        if (displayBlocked) return;
+
         File file = AppState.get().getFileForCurrentDirectory(_file);
         if (file == null || !Controller.isImageFile(file)) return;
 
@@ -659,6 +666,18 @@ public class MediaView {
         } else {
             SwingUtilities.invokeLater(task);
         }
+    }
+
+    public void setDisplayBlocked(boolean displayBlocked) {
+        this.displayBlocked = displayBlocked;
+        if (displayBlocked) {
+            stopAndHide();
+        }
+    }
+
+    public Rectangle getPlacementScreenBounds() {
+        GraphicsDevice device = getCurrentScreenDeviceForFrame(frame);
+        return device.getDefaultConfiguration().getBounds();
     }
 
     private void seekVideoTo(double progress) {
