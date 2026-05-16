@@ -44,6 +44,8 @@ public class ControlPanel extends JPanel {
     private final SlideshowManager slideshowManager = new SlideshowManager();
 
     private final JCheckBox cbxShowUntaggedOnly = new JCheckBox();
+    private final JLabel lblTagFilterStatus = new JLabel();
+    private int tagFilterCount = -1;
 
     private JSlider sldVolume;
     private JLabel lblVol;
@@ -56,6 +58,7 @@ public class ControlPanel extends JPanel {
     private TagSelectionPanel tagSelectionPanel;
     private TagEditDialog tagEditDialog;
     private BookmarkDialog bookmarkDialog;
+    private TagFilterDialog tagFilterDialog;
     private Rectangle tagEditDialogBounds;
     private long lastSliderEventTime;
 
@@ -87,7 +90,9 @@ public class ControlPanel extends JPanel {
 
         EventBus.get().register(CurrentDirectoryChangedEvent.class, e -> {
             cbxShowUntaggedOnly.setSelected(false);
+            tagFilterCount = -1;
             updateUntaggedFilterCheckbox();
+            updateTagFilterStatus();
             tagSelectionPanel.reloadTags();
         });
 
@@ -97,6 +102,7 @@ public class ControlPanel extends JPanel {
                 keepOnlyUntaggedFilesInCurrentView();
             }
             tagSelectionPanel.reloadTags();
+            updateTagFilterStatus();
             if (tagEditDialog != null) {
                 tagEditDialog.refreshCurrentFile();
             }
@@ -484,32 +490,61 @@ public class ControlPanel extends JPanel {
         cbxShowUntaggedOnly.setName("nur untagged anzeigen");
         cbxShowUntaggedOnly.addActionListener(a -> applyUntaggedFilterCheckbox());
 
-        JButton btnSetTags = new JButton("Tags setzen");
-        btnSetTags.addActionListener(a -> {
-            if (AppState.get().getCurrentFile() != null) {
-
-                Window parent = SwingUtilities.getWindowAncestor(Controller.getInstance().getThumbnailPanel());
-
-                if (tagEditDialog == null) {
-                    tagEditDialog = createTagEditDialog(parent);
-                }
-
-                tagEditDialog.setFile(AppState.get().getCurrentFile(), true);
-            }
-        });
-        JCheckBox cbxAutoOpenTagsDialog = new JCheckBox("automatisch öffnen");
-        cbxAutoOpenTagsDialog.addActionListener(l -> {
-            AppState.get().setAutoOpenTagsDialog(cbxAutoOpenTagsDialog.isSelected());
-        });
+        JButton btnFilterTags = new JButton("Tags filtern");
+        btnFilterTags.addActionListener(a -> openTagFilterDialog());
+        JButton btnClearTagFilter = new JButton("löschen");
+        btnClearTagFilter.addActionListener(a -> clearTagFilter());
 
         add(H.makeHorizontalPanel(cbxShowUntaggedOnly));
         JButton btnBookmarks = new JButton("Bookmarks");
         btnBookmarks.addActionListener(a -> openBookmarkDialog());
         add(H.makeHorizontalPanel(btnBookmarks));
-        add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
+        updateTagFilterStatus();
+        add(H.makeHorizontalPanel(btnFilterTags, btnClearTagFilter, lblTagFilterStatus));
         tagSelectionPanel = new TagSelectionPanel();
         add(tagSelectionPanel);
         updateUntaggedFilterCheckbox();
+        updateTagFilterStatus();
+    }
+
+    private void openTagFilterDialog() {
+        if (tagFilterDialog != null && tagFilterDialog.isDisplayable()) {
+            tagFilterDialog.toFront();
+            tagFilterDialog.requestFocus();
+            return;
+        }
+
+        Window parent = SwingUtilities.getWindowAncestor(Controller.getInstance().getThumbnailPanel());
+        tagFilterDialog = new TagFilterDialog(parent, count -> {
+            tagFilterCount = count == null ? -1 : count;
+            updateTagFilterStatus();
+        });
+        tagFilterDialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(java.awt.event.WindowEvent e) {
+                tagFilterDialog = null;
+            }
+        });
+        tagFilterDialog.setVisible(true);
+    }
+
+    private void clearTagFilter() {
+        tagFilterCount = -1;
+        AppState.get().setMinimunDuration(0);
+        if (tagFilterDialog != null && tagFilterDialog.isDisplayable()) {
+            tagFilterDialog.clearFilterSelection();
+        }
+        Controller.getInstance().setSelectedFiles(null);
+        updateTagFilterStatus();
+    }
+
+    private void updateTagFilterStatus() {
+        if (lblTagFilterStatus == null) return;
+        if (tagFilterCount < 0) {
+            lblTagFilterStatus.setText("ungefiltert: " + getAllMediaFiles().size());
+        } else {
+            lblTagFilterStatus.setText("Filter aktiv: " + tagFilterCount);
+        }
     }
 
     private void openBookmarkDialog() {
@@ -595,6 +630,9 @@ public class ControlPanel extends JPanel {
         AppState.get().setCurrentFile(file);
         if (tagEditDialog != null) {
             tagEditDialog.setFile(AppState.get().getCurrentFile(), false);
+        }
+        if (tagSelectionPanel != null) {
+            tagSelectionPanel.updateSelectionForCurrentFile();
         }
         RangeHandler.Range range = rangeHandler.getRangeForFile(file);
         SwingUtilities.invokeLater(() -> {

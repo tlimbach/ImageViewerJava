@@ -1,6 +1,7 @@
 package ui;
 
 import event.CurrentDirectoryChangedEvent;
+import event.TagsChangedEvent;
 import model.AppState;
 import service.Controller;
 import service.EventBus;
@@ -9,16 +10,20 @@ import service.TagHandler;
 
 import javax.swing.*;
 import java.awt.*;
-import java.awt.event.KeyAdapter;
-import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Consumer;
 
 public class TagSelectionPanel extends JPanel {
+    public enum Mode {
+        EDIT_CURRENT_FILE,
+        FILTER
+    }
 
+    private final Mode mode;
     private final JPanel checkboxPanel;
     private final JScrollPane scrollPane;
     private final TagHandler handler = TagHandler.getInstance();
@@ -31,7 +36,15 @@ public class TagSelectionPanel extends JPanel {
 
     private JButton btnApplyMinDuration = new JButton("ok");
 
+    private boolean updatingFromCode;
+    private Consumer<Integer> filterResultCountListener;
+
     public TagSelectionPanel() {
+        this(Mode.EDIT_CURRENT_FILE);
+    }
+
+    public TagSelectionPanel(Mode mode) {
+        this.mode = mode;
         setLayout(new BorderLayout());
 
         checkboxPanel = new JPanel();
@@ -49,7 +62,9 @@ public class TagSelectionPanel extends JPanel {
 
         txtMinduration.setToolTipText("Minimale Dauer in Sekunden");
 
-        add(H.makeHorizontalPanel(cbxAnyMatch, new JPopupMenu.Separator(), new JLabel("Mindestdauer"), txtMinduration, btnApplyMinDuration), BorderLayout.SOUTH);
+        if (mode == Mode.FILTER) {
+            add(H.makeHorizontalPanel(cbxAnyMatch, new JPopupMenu.Separator(), new JLabel("Mindestdauer"), txtMinduration, btnApplyMinDuration), BorderLayout.SOUTH);
+        }
         // Initialer Load
         reloadTags();
 
@@ -81,12 +96,23 @@ public class TagSelectionPanel extends JPanel {
         checkboxes.clear();
         H.out("keyset size " + tags.keySet().size());
         List<String> sortedTags = new ArrayList<>(tags.keySet());
-        sortedTags.sort(String.CASE_INSENSITIVE_ORDER);
+        sortedTags.sort((left, right) -> {
+            int countCompare = Integer.compare(tags.getOrDefault(right, 0), tags.getOrDefault(left, 0));
+            if (countCompare != 0) return countCompare;
+            return String.CASE_INSENSITIVE_ORDER.compare(left, right);
+        });
 
         for (String tag : sortedTags) {
             int count = tags.get(tag);
             JCheckBox checkbox = new JCheckBox(tag + " (" + count + ")");
-            checkbox.addActionListener(e -> fireTagSelectionChanged());
+            checkbox.addActionListener(e -> {
+                if (updatingFromCode) return;
+                if (mode == Mode.FILTER) {
+                    fireTagSelectionChanged();
+                } else {
+                    saveTagsForCurrentFile();
+                }
+            });
 
             // Rechtsklick-Listener für Umbenennen
             checkbox.addMouseListener(new MouseAdapter() {
@@ -102,8 +128,31 @@ public class TagSelectionPanel extends JPanel {
             checkboxPanel.add(checkbox);
         }
 
+        updateSelectionForCurrentFile();
         revalidate();
         repaint();
+    }
+
+    public void updateSelectionForCurrentFile() {
+        if (mode != Mode.EDIT_CURRENT_FILE) return;
+
+        updatingFromCode = true;
+        try {
+            for (JCheckBox checkbox : checkboxes) {
+                checkbox.setSelected(false);
+            }
+
+            if (AppState.get().getCurrentFile() == null) {
+                return;
+            }
+
+            List<String> fileTags = handler.getTagsForFile(AppState.get().getCurrentFile().getName());
+            for (JCheckBox checkbox : checkboxes) {
+                checkbox.setSelected(fileTags.contains(tagFromCheckbox(checkbox)));
+            }
+        } finally {
+            updatingFromCode = false;
+        }
     }
 
     /** Gibt Liste der aktuell ausgewählten Tags zurück. */
@@ -112,11 +161,23 @@ public class TagSelectionPanel extends JPanel {
         for (JCheckBox checkbox : checkboxes) {
             if (checkbox.isSelected()) {
                 String label = checkbox.getText();
-                int index = label.lastIndexOf(" (");
-                selected.add(index > 0 ? label.substring(0, index) : label);
+                selected.add(tagFromCheckbox(checkbox));
             }
         }
         return selected;
+    }
+
+    private String tagFromCheckbox(JCheckBox checkbox) {
+        String label = checkbox.getText();
+        int index = label.lastIndexOf(" (");
+        return index > 0 ? label.substring(0, index) : label;
+    }
+
+    private void saveTagsForCurrentFile() {
+        if (AppState.get().getCurrentFile() == null) return;
+
+        handler.setTagsToFile(getSelectedTags(), AppState.get().getCurrentFile().getName());
+        EventBus.get().publish(new TagsChangedEvent());
     }
 
     /** Informiert Controller über neue Selektion. */
@@ -124,6 +185,28 @@ public class TagSelectionPanel extends JPanel {
         List<String> selectedTags = getSelectedTags();
         List<String> files = handler.getFilesForSelectedTags(selectedTags, cbxAnyMatch.isSelected());
         Controller.getInstance().setSelectedFiles(files);
+        if (filterResultCountListener != null) {
+            filterResultCountListener.accept(files == null ? null : files.size());
+        }
+    }
+
+    public void setFilterResultCountListener(Consumer<Integer> filterResultCountListener) {
+        this.filterResultCountListener = filterResultCountListener;
+    }
+
+    public void clearFilterSelection() {
+        if (mode != Mode.FILTER) return;
+
+        updatingFromCode = true;
+        try {
+            for (JCheckBox checkbox : checkboxes) {
+                checkbox.setSelected(false);
+            }
+            cbxAnyMatch.setSelected(true);
+            txtMinduration.setText("");
+        } finally {
+            updatingFromCode = false;
+        }
     }
 
     /** Öffnet Umbenennen-Dialog für ein Tag. */
@@ -149,6 +232,7 @@ public class TagSelectionPanel extends JPanel {
 
             handler.renameTag(oldTag, newTag);
             reloadTags();
+            EventBus.get().publish(new TagsChangedEvent());
         }
     }
 }
