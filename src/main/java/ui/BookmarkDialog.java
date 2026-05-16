@@ -7,12 +7,15 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.WindowAdapter;
+import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.io.File;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.function.Consumer;
 
 public class BookmarkDialog extends JDialog {
 
@@ -24,15 +27,25 @@ public class BookmarkDialog extends JDialog {
     private final JPanel thumbnailPanel = new JPanel(new GridLayout(0, 3, 6, 6));
     private final JCheckBox syncMainViewCheckbox = new JCheckBox("synchronisieren mit Hauptansicht");
     private final Map<String, JLabel> labelsByFilename = new HashMap<>();
+    private final Consumer<File> okHandler;
+    private final Runnable closeHandler;
     private boolean updatingSelection;
     private File selectedFile;
-    private boolean okPressed;
+    private boolean closed;
 
-    public BookmarkDialog(Window owner) {
-        super(owner, "Bookmarks", ModalityType.APPLICATION_MODAL);
+    public BookmarkDialog(Window owner, Consumer<File> okHandler, Runnable closeHandler) {
+        super(owner, "Bookmarks", ModalityType.MODELESS);
+        this.okHandler = okHandler;
+        this.closeHandler = closeHandler;
 
         setLayout(new BorderLayout(8, 8));
-        setDefaultCloseOperation(DISPOSE_ON_CLOSE);
+        setDefaultCloseOperation(DO_NOTHING_ON_CLOSE);
+        addWindowListener(new WindowAdapter() {
+            @Override
+            public void windowClosing(WindowEvent e) {
+                closeWithoutOk();
+            }
+        });
 
         bookmarkList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         bookmarkList.addListSelectionListener(e -> {
@@ -101,12 +114,11 @@ public class BookmarkDialog extends JDialog {
         );
     }
 
-    public File showDialog() {
-        okPressed = false;
+    public void showDialog() {
+        closed = false;
         selectedFile = null;
         reloadBookmarks();
         setVisible(true);
-        return okPressed ? selectedFile : null;
     }
 
     private void reloadBookmarks() {
@@ -229,7 +241,6 @@ public class BookmarkDialog extends JDialog {
         JLabel selectedLabel = labelsByFilename.get(file.getName());
         if (selectedLabel != null) {
             selectedLabel.setBorder(BorderFactory.createLineBorder(Color.RED, 3));
-            selectedLabel.requestFocusInWindow();
         }
 
         syncMainViewSelection(file);
@@ -271,6 +282,7 @@ public class BookmarkDialog extends JDialog {
         if (label != null) {
             selectFromThumbnail(label);
             scrollThumbnailToVisible(label);
+            label.requestFocusInWindow();
         }
     }
 
@@ -361,13 +373,25 @@ public class BookmarkDialog extends JDialog {
     }
 
     private void closeWithOk() {
-        okPressed = true;
+        if (closed) return;
+        closed = true;
+        File file = selectedFile;
         dispose();
+        if (closeHandler != null) {
+            closeHandler.run();
+        }
+        if (file != null && okHandler != null) {
+            okHandler.accept(file);
+        }
     }
 
     private void closeWithoutOk() {
-        okPressed = false;
+        if (closed) return;
+        closed = true;
         selectedFile = null;
         dispose();
+        if (closeHandler != null) {
+            closeHandler.run();
+        }
     }
 }

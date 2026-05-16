@@ -55,6 +55,7 @@ public class ControlPanel extends JPanel {
     private RangeHandler rangeHandler = RangeHandler.getInstance();
     private TagSelectionPanel tagSelectionPanel;
     private TagEditDialog tagEditDialog;
+    private BookmarkDialog bookmarkDialog;
     private Rectangle tagEditDialogBounds;
     private long lastSliderEventTime;
 
@@ -512,19 +513,24 @@ public class ControlPanel extends JPanel {
     }
 
     private void openBookmarkDialog() {
+        if (bookmarkDialog != null && bookmarkDialog.isDisplayable()) {
+            bookmarkDialog.toFront();
+            bookmarkDialog.requestFocus();
+            return;
+        }
+
         Window parent = SwingUtilities.getWindowAncestor(Controller.getInstance().getThumbnailPanel());
         slideshowManager.stop();
         MediaView.getInstance().setDisplayBlocked(true);
-        try {
-            BookmarkDialog dialog = new BookmarkDialog(parent);
-            File selected = dialog.showDialog();
-            MediaView.getInstance().setDisplayBlocked(false);
-            if (selected != null) {
-                Controller.getInstance().getThumbnailPanel().selectAndDisplayFile(selected);
-            }
-        } finally {
-            MediaView.getInstance().setDisplayBlocked(false);
-        }
+        bookmarkDialog = new BookmarkDialog(
+                parent,
+                selected -> Controller.getInstance().getThumbnailPanel().selectAndDisplayFile(selected),
+                () -> {
+                    MediaView.getInstance().setDisplayBlocked(false);
+                    bookmarkDialog = null;
+                }
+        );
+        bookmarkDialog.showDialog();
     }
 
     private TagEditDialog createTagEditDialog(Window parent) {
