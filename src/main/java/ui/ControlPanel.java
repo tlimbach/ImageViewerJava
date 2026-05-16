@@ -503,10 +503,10 @@ public class ControlPanel extends JPanel {
         });
 
         add(H.makeHorizontalPanel(cbxShowUntaggedOnly));
-        add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
         JButton btnBookmarks = new JButton("Bookmarks");
         btnBookmarks.addActionListener(a -> openBookmarkDialog());
         add(H.makeHorizontalPanel(btnBookmarks));
+        add(H.makeHorizontalPanel(btnSetTags, cbxAutoOpenTagsDialog));
         tagSelectionPanel = new TagSelectionPanel();
         add(tagSelectionPanel);
         updateUntaggedFilterCheckbox();
