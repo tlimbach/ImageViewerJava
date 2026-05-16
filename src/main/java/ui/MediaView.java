@@ -56,6 +56,7 @@ public class MediaView {
         frame.setSize(1280, 768);
 
         frame.setLayout(new BorderLayout());
+        installEscapeCloseAction();
 
         frame.addWindowListener(new java.awt.event.WindowAdapter() {
             @Override
@@ -69,6 +70,11 @@ public class MediaView {
         frame.addKeyListener(new java.awt.event.KeyAdapter() {
             @Override
             public void keyPressed(java.awt.event.KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_ESCAPE) {
+                    closeFromUserRequest();
+                    return;
+                }
+
                 if (currentFile == null) return;
                 int rot = RotationHandler.getInstance().getRotation(currentFile);
                 if (e.getKeyChar() == 'l') {
@@ -203,6 +209,26 @@ public class MediaView {
                 SwingUtilities.invokeLater(() -> imagePanel.clearPreviewZoom(e.file()));
             }
         });
+    }
+
+    private void installEscapeCloseAction() {
+        String actionKey = "closeMediaView";
+        frame.getRootPane().getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), actionKey);
+        frame.getRootPane().getActionMap().put(actionKey, new AbstractAction() {
+            @Override
+            public void actionPerformed(java.awt.event.ActionEvent e) {
+                closeFromUserRequest();
+            }
+        });
+    }
+
+    private void closeFromUserRequest() {
+        ControlPanel controlPanel = Controller.getInstance().getControlPanel();
+        if (controlPanel != null && controlPanel.getSlideshowManager().isRunning()) {
+            controlPanel.getSlideshowManager().stop();
+        }
+        stopAndHide();
     }
 
     private void initPlayerListener() {
