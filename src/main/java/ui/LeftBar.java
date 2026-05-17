@@ -7,6 +7,8 @@ public class LeftBar extends JComponent {
 
     private long startTime = 0;
     private long duration = 1000; // ms
+    private long pausedElapsed = 0;
+    private boolean paused;
     private Timer timer;
 
     public LeftBar() {
@@ -19,12 +21,40 @@ public class LeftBar extends JComponent {
     public void start(long durationMs) {
         this.duration = durationMs;
         this.startTime = System.currentTimeMillis();
+        this.pausedElapsed = 0;
+        this.paused = false;
         setVisible(true);
         timer.start();
     }
 
+    public void pause() {
+        if (!isVisible() || paused) return;
+
+        pausedElapsed = Math.max(0, System.currentTimeMillis() - startTime);
+        paused = true;
+        timer.stop();
+        repaint();
+    }
+
+    public void resume(long remainingMillis) {
+        if (!paused) {
+            start(remainingMillis);
+            return;
+        }
+
+        long safeRemaining = Math.max(1, remainingMillis);
+        duration = pausedElapsed + safeRemaining;
+        startTime = System.currentTimeMillis() - pausedElapsed;
+        paused = false;
+        setVisible(true);
+        timer.start();
+        repaint();
+    }
+
     public void stop() {
         timer.stop();
+        paused = false;
+        pausedElapsed = 0;
         setVisible(false);
     }
 
@@ -32,8 +62,8 @@ public class LeftBar extends JComponent {
     protected void paintComponent(Graphics g) {
         if (!isVisible()) return;
 
-        long now = System.currentTimeMillis();
-        float progress = Math.min(1f, (now - startTime) / (float) duration);
+        long elapsed = paused ? pausedElapsed : System.currentTimeMillis() - startTime;
+        float progress = Math.min(1f, elapsed / (float) duration);
         int yStart = (int) (progress * getHeight());
         int height = getHeight() - yStart;
 

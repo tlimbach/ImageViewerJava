@@ -6,6 +6,8 @@ import java.awt.*;
 public class SlideshowCountdownOverlay extends JComponent {
 
     private long slideshowEndTime;
+    private long pausedRemainingMs;
+    private boolean paused;
     private final Timer timer;
 
     public SlideshowCountdownOverlay() {
@@ -16,6 +18,27 @@ public class SlideshowCountdownOverlay extends JComponent {
 
     public void start(long durationMs) {
         slideshowEndTime = System.currentTimeMillis() + Math.max(1, durationMs);
+        pausedRemainingMs = 0;
+        paused = false;
+        setVisible(true);
+        timer.start();
+        repaint();
+    }
+
+    public void pause() {
+        if (!isVisible() || paused) return;
+
+        pausedRemainingMs = Math.max(0, slideshowEndTime - System.currentTimeMillis());
+        paused = true;
+        timer.stop();
+        repaint();
+    }
+
+    public void resume(long remainingMs) {
+        long safeRemaining = paused ? pausedRemainingMs : Math.max(1, remainingMs);
+        slideshowEndTime = System.currentTimeMillis() + Math.max(1, safeRemaining);
+        pausedRemainingMs = 0;
+        paused = false;
         setVisible(true);
         timer.start();
         repaint();
@@ -23,6 +46,8 @@ public class SlideshowCountdownOverlay extends JComponent {
 
     public void stop() {
         timer.stop();
+        paused = false;
+        pausedRemainingMs = 0;
         setVisible(false);
     }
 
@@ -30,7 +55,7 @@ public class SlideshowCountdownOverlay extends JComponent {
     protected void paintComponent(Graphics g) {
         if (!isVisible()) return;
 
-        long remainingMillis = slideshowEndTime - System.currentTimeMillis();
+        long remainingMillis = paused ? pausedRemainingMs : slideshowEndTime - System.currentTimeMillis();
         if (remainingMillis > 60_000) return;
         if (remainingMillis <= 0) {
             stop();

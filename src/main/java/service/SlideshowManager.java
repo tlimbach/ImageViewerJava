@@ -114,7 +114,7 @@ public class SlideshowManager {
         interactionHold = false;
         stopTimersOnly();
         mediaView.stop();
-        mediaView.getLeftBar().stop();
+        mediaView.getLeftBar().pause();
         mediaView.stopSlideshowProgress();
         mediaView.resetSlideshowTransitionState();
         restoreOriginalThumbnailSelection();
@@ -145,8 +145,8 @@ public class SlideshowManager {
         if (slideshowTimer != null) {
             slideshowTimer.stop();
         }
-        mediaView.getLeftBar().stop();
-        mediaView.stopSlideshowProgress();
+        mediaView.getLeftBar().pause();
+        mediaView.pauseSlideshowProgress();
     }
 
     public void resumeAfterInteraction() {
@@ -157,8 +157,8 @@ public class SlideshowManager {
         endTime = now + heldImageRemainingMillis;
         interactionHold = false;
 
-        mediaView.getLeftBar().start(heldImageRemainingMillis);
-        mediaView.startSlideshowProgress(Math.max(1000, totalEndTime - now));
+        mediaView.getLeftBar().resume(heldImageRemainingMillis);
+        mediaView.resumeSlideshowProgress(Math.max(1000, totalEndTime - now));
         scheduleNext(heldImageRemainingMillis);
     }
 

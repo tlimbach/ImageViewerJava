@@ -601,6 +601,17 @@ public class MediaView {
         updateOverlayBounds();
     }
 
+    public void pauseSlideshowProgress() {
+        slideshowProgressOverlay.pause();
+        slideshowCountdownOverlay.pause();
+    }
+
+    public void resumeSlideshowProgress(long remainingMs) {
+        slideshowProgressOverlay.resume(remainingMs);
+        slideshowCountdownOverlay.resume(remainingMs);
+        updateOverlayBounds();
+    }
+
     public void stopSlideshowProgress() {
         slideshowProgressOverlay.stop();
         slideshowCountdownOverlay.stop();

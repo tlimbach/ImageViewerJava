@@ -3,6 +3,7 @@ package ui;
 import event.TagsChangedEvent;
 import event.UserCommand;
 import event.UserKeyboardEvent;
+import event.ImageZoomPreviewEvent;
 import model.AppState;
 import service.Controller;
 import service.EventBus;
@@ -17,6 +18,7 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.event.MouseWheelEvent;
 import java.awt.geom.Area;
 import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
@@ -38,6 +40,9 @@ public class AnimatedImagePanel extends JPanel {
     private static final int MENU_GAP = 8;
     private static final int MIN_SELECTION_SIZE = 8;
     private static final int ZOOM_MARKER_SIZE = 18;
+    private static final double WHEEL_ZOOM_STEP = 1.12;
+    private static final double MIN_WHEEL_ZOOM_SIZE = 0.02;
+    private static final int WHEEL_ZOOM_SAVE_DELAY_MS = 250;
     private static final String SPECIAL_TAG = "Ach Du Scheisse";
     private static final String OK_TAG = "ok";
     private static final String BEAUTIFULL_TAG = "beautifull";
@@ -66,8 +71,10 @@ public class AnimatedImagePanel extends JPanel {
     private final OverlayButton cropButton = new OverlayButton("Neues Bild");
     private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
     private final OverlayButton closeButton = new OverlayButton("Schließen");
+    private final PlayPauseOverlayButton playPauseButton = new PlayPauseOverlayButton();
     private final DeleteConfirmationOverlay deleteConfirmationOverlay = new DeleteConfirmationOverlay();
     private final Timer overlayHideTimer;
+    private final Timer wheelZoomSaveTimer;
     private ImageZoomHandler.ZoomSelection zoomSelection;
     private BufferedImage displayImage;
     private boolean updatingSaturationCombo;
@@ -76,8 +83,14 @@ public class AnimatedImagePanel extends JPanel {
     private Point dragStart;
     private Rectangle selection;
     private Rectangle2D renderedImageBounds;
+    private Point panStart;
+    private ImageZoomHandler.ZoomSelection panStartZoom;
+    private Rectangle2D panStartImageBounds;
+    private File pendingWheelZoomFile;
+    private ImageZoomHandler.ZoomSelection pendingWheelZoom;
     private boolean overlayVisible;
     private boolean displayFullSize;
+    private boolean slideshowPausedByButton;
 
     public AnimatedImagePanel(Image image, int newWidth, int newHeight) {
         this(image, newWidth, newHeight, null, null, null, null);
@@ -112,6 +125,8 @@ public class AnimatedImagePanel extends JPanel {
         installMouseSelection();
         overlayHideTimer = new Timer(1000, e -> hideOverlayIfPointerIsAway());
         overlayHideTimer.setRepeats(false);
+        wheelZoomSaveTimer = new Timer(WHEEL_ZOOM_SAVE_DELAY_MS, e -> persistPendingWheelZoom());
+        wheelZoomSaveTimer.setRepeats(false);
     }
 
     private void installResetButton() {
@@ -123,9 +138,11 @@ public class AnimatedImagePanel extends JPanel {
         resetButton.setVisible(false);
         resetButton.addActionListener(e -> {
             beginInteraction();
+            clearPendingWheelZoom();
             ImageZoomHandler.getInstance().resetZoomForFile(file);
             zoomSelection = null;
             displayFullSize = false;
+            updatePanCursor();
             setOverlayVisible(false);
             repaint();
             finishInteraction();
@@ -149,6 +166,9 @@ public class AnimatedImagePanel extends JPanel {
         closeButton.setVisible(false);
         closeButton.setToolTipText("Media View schließen");
         closeButton.addActionListener(e -> closeMediaView());
+        playPauseButton.setFocusable(false);
+        playPauseButton.setVisible(false);
+        playPauseButton.addActionListener(e -> toggleSlideshowPause());
         MouseAdapter buttonMouseHandler = new MouseAdapter() {
             @Override
             public void mouseMoved(MouseEvent e) {
@@ -184,6 +204,8 @@ public class AnimatedImagePanel extends JPanel {
         deleteButton.addMouseMotionListener(buttonMouseHandler);
         closeButton.addMouseListener(buttonMouseHandler);
         closeButton.addMouseMotionListener(buttonMouseHandler);
+        playPauseButton.addMouseListener(buttonMouseHandler);
+        playPauseButton.addMouseMotionListener(buttonMouseHandler);
         add(displayModeButton);
         add(resetButton);
         add(specialTagButton);
@@ -196,6 +218,7 @@ public class AnimatedImagePanel extends JPanel {
         add(cropButton);
         add(deleteButton);
         add(closeButton);
+        add(playPauseButton);
         add(deleteConfirmationOverlay);
         setComponentZOrder(deleteConfirmationOverlay, 0);
     }
@@ -209,6 +232,9 @@ public class AnimatedImagePanel extends JPanel {
                     return;
                 }
                 if (file == null || !SwingUtilities.isLeftMouseButton(e)) return;
+                if (tryStartPan(e)) {
+                    return;
+                }
                 beginInteraction();
                 showOverlayTemporarily();
                 dragStart = e.getPoint();
@@ -218,6 +244,10 @@ public class AnimatedImagePanel extends JPanel {
 
             @Override
             public void mouseDragged(MouseEvent e) {
+                if (panStart != null) {
+                    updatePan(e.getPoint(), false);
+                    return;
+                }
                 if (dragStart == null) return;
                 showOverlayTemporarily();
                 selection = createRectangle(dragStart, e.getPoint());
@@ -226,6 +256,12 @@ public class AnimatedImagePanel extends JPanel {
 
             @Override
             public void mouseReleased(MouseEvent e) {
+                if (panStart != null) {
+                    updatePan(e.getPoint(), true);
+                    clearPan();
+                    finishInteraction();
+                    return;
+                }
                 if (dragStart == null) return;
                 showOverlayTemporarily();
                 selection = createRectangle(dragStart, e.getPoint());
@@ -239,6 +275,7 @@ public class AnimatedImagePanel extends JPanel {
             @Override
             public void mouseMoved(MouseEvent e) {
                 showOverlayTemporarily();
+                updatePanCursor();
             }
 
             @Override
@@ -256,6 +293,7 @@ public class AnimatedImagePanel extends JPanel {
 
         addMouseListener(mouseHandler);
         addMouseMotionListener(mouseHandler);
+        addMouseWheelListener(this::handleWheelZoom);
     }
 
     private void deleteCurrentImage() {
@@ -400,12 +438,14 @@ public class AnimatedImagePanel extends JPanel {
     }
 
     private void beginInteraction() {
+        if (slideshowPausedByButton) return;
         if (onInteractionStarted != null) {
             onInteractionStarted.run();
         }
     }
 
     private void finishInteraction() {
+        if (slideshowPausedByButton) return;
         if (onInteractionFinished != null) {
             onInteractionFinished.run();
         }
@@ -521,6 +561,7 @@ public class AnimatedImagePanel extends JPanel {
         cropButton.setEnabled(hasZoom);
         deleteButton.setVisible(visible && file != null);
         closeButton.setVisible(visible && file != null);
+        playPauseButton.setVisible(visible && file != null);
         repaint();
     }
 
@@ -528,6 +569,7 @@ public class AnimatedImagePanel extends JPanel {
         this.displayFullSize = displayFullSize;
         updateDisplayModeButton();
         showOverlayTemporarily();
+        updatePanCursor();
         repaint();
     }
 
@@ -539,6 +581,25 @@ public class AnimatedImagePanel extends JPanel {
         setOverlayVisible(false);
         Controller.getInstance().getControlPanel().getSlideshowManager().stop();
         MediaView.getInstance().stopAndHide();
+    }
+
+    private void toggleSlideshowPause() {
+        if (file == null) return;
+
+        if (slideshowPausedByButton) {
+            slideshowPausedByButton = false;
+            playPauseButton.setPaused(false);
+            if (onInteractionFinished != null) {
+                onInteractionFinished.run();
+            }
+        } else {
+            if (onInteractionStarted != null) {
+                onInteractionStarted.run();
+            }
+            slideshowPausedByButton = true;
+            playPauseButton.setPaused(true);
+        }
+        showOverlayTemporarily();
     }
 
     private Rectangle createRectangle(Point a, Point b) {
@@ -567,8 +628,10 @@ public class AnimatedImagePanel extends JPanel {
                 selectedImageRect.getWidth() / image.getWidth(),
                 selectedImageRect.getHeight() / image.getHeight()
         );
+        clearPendingWheelZoom();
         ImageZoomHandler.getInstance().setZoomForFile(file, zoomSelection);
         displayFullSize = false;
+        updatePanCursor();
         setOverlayVisible(true);
     }
 
@@ -674,6 +737,139 @@ public class AnimatedImagePanel extends JPanel {
                 // Die Sortierung gruppiert _ausschnitt-Dateien trotzdem neben dem Original.
             }
         }
+    }
+
+    private boolean tryStartPan(MouseEvent e) {
+        if (zoomSelection == null || displayFullSize || e.isShiftDown()) return false;
+
+        beginInteraction();
+        panStart = e.getPoint();
+        panStartZoom = zoomSelection;
+        panStartImageBounds = renderedImageBounds != null
+                ? renderedImageBounds
+                : getRenderedImageBounds(getWidth(), getHeight());
+        setCursor(Cursor.getPredefinedCursor(Cursor.MOVE_CURSOR));
+        showOverlayTemporarily();
+        return true;
+    }
+
+    private void updatePan(Point point, boolean persist) {
+        if (panStart == null || panStartZoom == null || panStartImageBounds == null) return;
+
+        double dxImage = -(point.x - panStart.x) * image.getWidth() / panStartImageBounds.getWidth();
+        double dyImage = -(point.y - panStart.y) * image.getHeight() / panStartImageBounds.getHeight();
+
+        double newX = clamp(panStartZoom.x() + dxImage / image.getWidth(), 0, 1 - panStartZoom.width());
+        double newY = clamp(panStartZoom.y() + dyImage / image.getHeight(), 0, 1 - panStartZoom.height());
+
+        ImageZoomHandler.ZoomSelection updated = new ImageZoomHandler.ZoomSelection(
+                newX,
+                newY,
+                panStartZoom.width(),
+                panStartZoom.height()
+        );
+
+        zoomSelection = updated;
+        EventBus.get().publish(new ImageZoomPreviewEvent(file, updated));
+        repaint();
+
+        if (persist) {
+            clearPendingWheelZoom();
+            ImageZoomHandler.getInstance().setZoomForFile(file, updated);
+        }
+    }
+
+    private void clearPan() {
+        panStart = null;
+        panStartZoom = null;
+        panStartImageBounds = null;
+        updatePanCursor();
+    }
+
+    private void updatePanCursor() {
+        boolean canPan = file != null && !displayFullSize && zoomSelection != null;
+        setCursor(canPan ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+    }
+
+    private void handleWheelZoom(MouseWheelEvent e) {
+        if (image == null || file == null) return;
+
+        double wheelRotation = e.getPreciseWheelRotation();
+        if (wheelRotation == 0) return;
+
+        ImageZoomHandler.ZoomSelection currentZoom = zoomSelection;
+        if (currentZoom == null && wheelRotation > 0) {
+            return;
+        }
+
+        Rectangle2D imageBounds = renderedImageBounds != null
+                ? renderedImageBounds
+                : getRenderedImageBounds(getWidth(), getHeight());
+        if (imageBounds.getWidth() <= 0 || imageBounds.getHeight() <= 0) return;
+
+        e.consume();
+        beginInteraction();
+        showOverlayTemporarily();
+
+        double focusX = clamp(
+                (e.getX() - imageBounds.getX()) * image.getWidth() / imageBounds.getWidth(),
+                0,
+                image.getWidth()
+        );
+        double focusY = clamp(
+                (e.getY() - imageBounds.getY()) * image.getHeight() / imageBounds.getHeight(),
+                0,
+                image.getHeight()
+        );
+
+        if (currentZoom == null) {
+            currentZoom = new ImageZoomHandler.ZoomSelection(0, 0, 1, 1);
+        }
+
+        double factor = Math.pow(WHEEL_ZOOM_STEP, wheelRotation);
+        double newWidth = clamp(currentZoom.width() * factor, MIN_WHEEL_ZOOM_SIZE, 1);
+        double newHeight = clamp(currentZoom.height() * factor, MIN_WHEEL_ZOOM_SIZE, 1);
+
+        double focusNormalizedX = focusX / image.getWidth();
+        double focusNormalizedY = focusY / image.getHeight();
+        double oldWidth = Math.max(currentZoom.width(), MIN_WHEEL_ZOOM_SIZE);
+        double oldHeight = Math.max(currentZoom.height(), MIN_WHEEL_ZOOM_SIZE);
+        double ratioX = clamp((focusNormalizedX - currentZoom.x()) / oldWidth, 0, 1);
+        double ratioY = clamp((focusNormalizedY - currentZoom.y()) / oldHeight, 0, 1);
+
+        double newX = clamp(focusNormalizedX - ratioX * newWidth, 0, 1 - newWidth);
+        double newY = clamp(focusNormalizedY - ratioY * newHeight, 0, 1 - newHeight);
+
+        ImageZoomHandler.ZoomSelection updated = new ImageZoomHandler.ZoomSelection(
+                newX,
+                newY,
+                newWidth,
+                newHeight
+        );
+
+        displayFullSize = false;
+        zoomSelection = updated;
+        pendingWheelZoomFile = file;
+        pendingWheelZoom = updated;
+        EventBus.get().publish(new ImageZoomPreviewEvent(file, updated));
+        wheelZoomSaveTimer.restart();
+        updatePanCursor();
+        repaint();
+    }
+
+    private void persistPendingWheelZoom() {
+        if (pendingWheelZoomFile == null || pendingWheelZoom == null) return;
+        wheelZoomSaveTimer.stop();
+        ImageZoomHandler.getInstance().setZoomForFile(pendingWheelZoomFile, pendingWheelZoom);
+        pendingWheelZoomFile = null;
+        pendingWheelZoom = null;
+        finishInteraction();
+    }
+
+    private void clearPendingWheelZoom() {
+        wheelZoomSaveTimer.stop();
+        pendingWheelZoomFile = null;
+        pendingWheelZoom = null;
     }
 
     private Rectangle toImageRectangle(Rectangle panelRect, Rectangle2D imageBounds) {
@@ -921,6 +1117,12 @@ public class AnimatedImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
+        playPauseButton.setBounds(
+                x,
+                y + MENU_HEIGHT * 8 + MENU_GAP * 8,
+                OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
+                OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP
+        );
         int confirmWidth = Math.min(360, Math.max(260, getWidth() - 80));
         int confirmHeight = 118;
         deleteConfirmationOverlay.setBounds(
@@ -933,7 +1135,7 @@ public class AnimatedImagePanel extends JPanel {
 
     private Dimension getOverlayMenuSize() {
         int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
-        int height = MENU_HEIGHT * 8 + MENU_GAP * 7;
+        int height = MENU_HEIGHT * 8 + MENU_GAP * 8 + width;
         return new Dimension(width, height);
     }
 
@@ -950,7 +1152,8 @@ public class AnimatedImagePanel extends JPanel {
                 nextImageAfterTaggingCheckbox,
                 cropButton,
                 deleteButton,
-                closeButton
+                closeButton,
+                playPauseButton
         };
         Rectangle result = null;
         for (JComponent component : buttons) {
@@ -958,6 +1161,59 @@ public class AnimatedImagePanel extends JPanel {
             result = result == null ? component.getBounds() : result.union(component.getBounds());
         }
         return result;
+    }
+
+    private static class PlayPauseOverlayButton extends JButton {
+        private boolean paused;
+
+        PlayPauseOverlayButton() {
+            setOpaque(false);
+            setContentAreaFilled(false);
+            setBorderPainted(false);
+            setFocusPainted(false);
+            setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+            setToolTipText("Diashow pausieren");
+        }
+
+        void setPaused(boolean paused) {
+            this.paused = paused;
+            setToolTipText(paused ? "Diashow fortsetzen" : "Diashow pausieren");
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                g2.setColor(new Color(245, 245, 245, getModel().isPressed() ? 230 : 200));
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), 8, 8);
+                g2.setColor(Color.BLACK);
+
+                int size = Math.min(getWidth(), getHeight());
+                int iconSize = Math.max(42, size / 3);
+                int centerX = getWidth() / 2;
+                int centerY = getHeight() / 2;
+
+                if (paused) {
+                    Polygon play = new Polygon();
+                    play.addPoint(centerX - iconSize / 3, centerY - iconSize / 2);
+                    play.addPoint(centerX - iconSize / 3, centerY + iconSize / 2);
+                    play.addPoint(centerX + iconSize / 2, centerY);
+                    g2.fillPolygon(play);
+                } else {
+                    int barWidth = Math.max(10, iconSize / 5);
+                    int barHeight = iconSize;
+                    int gap = Math.max(10, iconSize / 5);
+                    g2.fillRoundRect(centerX - gap / 2 - barWidth, centerY - barHeight / 2,
+                            barWidth, barHeight, 5, 5);
+                    g2.fillRoundRect(centerX + gap / 2, centerY - barHeight / 2,
+                            barWidth, barHeight, 5, 5);
+                }
+            } finally {
+                g2.dispose();
+            }
+        }
     }
 
 }
