@@ -9,6 +9,7 @@ import service.Controller;
 import service.EventBus;
 import service.ImageEnhancementUtils;
 import service.ImageSaturationHandler;
+import service.ImageTemperatureHandler;
 import service.ImageZoomHandler;
 import service.TagHandler;
 
@@ -57,6 +58,11 @@ public class ZoomableImagePanel extends JPanel {
     private final OverlayButton artTagButton = new OverlayButton(ART_TAG);
     private final JComboBox<ImageSaturationHandler.SaturationLevel> saturationCombo =
             new JComboBox<>(ImageSaturationHandler.SaturationLevel.values());
+    private final JSlider temperatureSlider = new JSlider(
+            ImageTemperatureHandler.MIN_TEMPERATURE,
+            ImageTemperatureHandler.MAX_TEMPERATURE,
+            ImageTemperatureHandler.NEUTRAL_TEMPERATURE
+    );
     private final JCheckBox nextImageAfterTaggingCheckbox = new JCheckBox("Nächstes Bild nach Tagging");
     private final OverlayButton cropButton = new OverlayButton("Neues Bild");
     private final OverlayButton deleteButton = new OverlayButton("Bild löschen");
@@ -79,6 +85,7 @@ public class ZoomableImagePanel extends JPanel {
     private boolean overlayVisible;
     private boolean displayFullSize;
     private boolean updatingSaturationCombo;
+    private boolean updatingTemperatureSlider;
 
     public ZoomableImagePanel() {
         setBackground(Color.BLACK);
@@ -110,6 +117,7 @@ public class ZoomableImagePanel extends JPanel {
         installTagButton(beautifullTagButton, BEAUTIFULL_TAG);
         installTagButton(artTagButton, ART_TAG);
         installSaturationCombo();
+        installTemperatureSlider();
         installNextImageAfterTaggingCheckbox();
         cropButton.setFocusable(false);
         cropButton.setVisible(false);
@@ -152,6 +160,8 @@ public class ZoomableImagePanel extends JPanel {
         artTagButton.addMouseMotionListener(buttonMouseHandler);
         saturationCombo.addMouseListener(buttonMouseHandler);
         saturationCombo.addMouseMotionListener(buttonMouseHandler);
+        temperatureSlider.addMouseListener(buttonMouseHandler);
+        temperatureSlider.addMouseMotionListener(buttonMouseHandler);
         nextImageAfterTaggingCheckbox.addMouseListener(buttonMouseHandler);
         nextImageAfterTaggingCheckbox.addMouseMotionListener(buttonMouseHandler);
         cropButton.addMouseListener(buttonMouseHandler);
@@ -169,6 +179,7 @@ public class ZoomableImagePanel extends JPanel {
         add(beautifullTagButton);
         add(artTagButton);
         add(saturationCombo);
+        add(temperatureSlider);
         add(nextImageAfterTaggingCheckbox);
         add(cropButton);
         add(deleteButton);
@@ -255,7 +266,10 @@ public class ZoomableImagePanel extends JPanel {
         boolean wasOverlayVisible = overlayVisible;
         this.file = file;
         this.image = image;
-        applySaturationLevel(ImageSaturationHandler.getInstance().getLevelForFile(file));
+        applyImageEnhancements(
+                ImageSaturationHandler.getInstance().getLevelForFile(file),
+                ImageTemperatureHandler.getInstance().getTemperatureForFile(file)
+        );
         this.previewZoom = null;
         this.displayFullSize = false;
         this.selection = null;
@@ -354,14 +368,33 @@ public class ZoomableImagePanel extends JPanel {
         );
     }
 
-    private void applySaturationLevel(ImageSaturationHandler.SaturationLevel level) {
-        displayImage = ImageEnhancementUtils.adjustSaturation(image, level);
+    private void installTemperatureSlider() {
+        temperatureSlider.setFocusable(false);
+        temperatureSlider.setVisible(false);
+        temperatureSlider.setToolTipText("Farbtemperatur: links kühler, rechts wärmer");
+        temperatureSlider.setMajorTickSpacing(5);
+        temperatureSlider.setMinorTickSpacing(1);
+        temperatureSlider.setPaintTicks(true);
+        temperatureSlider.setSnapToTicks(true);
+        temperatureSlider.addChangeListener(e -> {
+            if (updatingTemperatureSlider || file == null) return;
+
+            int temperature = temperatureSlider.getValue();
+            previewTemperature(temperature);
+            if (!temperatureSlider.getValueIsAdjusting()) {
+                setTemperature(temperature);
+            }
+        });
+    }
+
+    private void applyImageEnhancements(ImageSaturationHandler.SaturationLevel saturationLevel, int temperature) {
+        displayImage = ImageEnhancementUtils.applyEnhancements(image, saturationLevel, temperature);
     }
 
     private void previewSaturationLevel(ImageSaturationHandler.SaturationLevel level) {
         if (file == null) return;
 
-        applySaturationLevel(level);
+        applyImageEnhancements(level, ImageTemperatureHandler.getInstance().getTemperatureForFile(file));
         showOverlayTemporarily();
         repaint();
     }
@@ -372,7 +405,7 @@ public class ZoomableImagePanel extends JPanel {
         updatingSaturationCombo = true;
         saturationCombo.setSelectedItem(level);
         updatingSaturationCombo = false;
-        applySaturationLevel(level);
+        applyImageEnhancements(level, ImageTemperatureHandler.getInstance().getTemperatureForFile(file));
         repaint();
     }
 
@@ -383,7 +416,27 @@ public class ZoomableImagePanel extends JPanel {
         saturationCombo.setSelectedItem(level);
         updatingSaturationCombo = false;
         ImageSaturationHandler.getInstance().setLevelForFile(file, level);
-        applySaturationLevel(level);
+        applyImageEnhancements(level, ImageTemperatureHandler.getInstance().getTemperatureForFile(file));
+        showOverlayTemporarily();
+        repaint();
+    }
+
+    private void previewTemperature(int temperature) {
+        if (file == null) return;
+
+        applyImageEnhancements(ImageSaturationHandler.getInstance().getLevelForFile(file), temperature);
+        keepOverlayVisibleForPreview();
+        repaint();
+    }
+
+    private void setTemperature(int temperature) {
+        if (file == null) return;
+
+        updatingTemperatureSlider = true;
+        temperatureSlider.setValue(temperature);
+        updatingTemperatureSlider = false;
+        ImageTemperatureHandler.getInstance().setTemperatureForFile(file, temperature);
+        applyImageEnhancements(ImageSaturationHandler.getInstance().getLevelForFile(file), temperature);
         showOverlayTemporarily();
         repaint();
     }
@@ -423,6 +476,13 @@ public class ZoomableImagePanel extends JPanel {
         updatingSaturationCombo = false;
     }
 
+    private void updateTemperatureSlider(boolean visible) {
+        temperatureSlider.setVisible(visible && file != null);
+        updatingTemperatureSlider = true;
+        temperatureSlider.setValue(ImageTemperatureHandler.getInstance().getTemperatureForFile(file));
+        updatingTemperatureSlider = false;
+    }
+
     private void updateNextImageAfterTaggingCheckbox(boolean visible) {
         nextImageAfterTaggingCheckbox.setVisible(visible && file != null);
         nextImageAfterTaggingCheckbox.setSelected(AppState.get().isNextImageAfterTagging());
@@ -448,6 +508,13 @@ public class ZoomableImagePanel extends JPanel {
 
     private void showOverlayTemporarily() {
         setOverlayVisible(image != null);
+        overlayHideTimer.restart();
+    }
+
+    private void keepOverlayVisibleForPreview() {
+        if (!overlayVisible) {
+            setOverlayVisible(image != null);
+        }
         overlayHideTimer.restart();
     }
 
@@ -489,6 +556,7 @@ public class ZoomableImagePanel extends JPanel {
         updateTagButton(beautifullTagButton, BEAUTIFULL_TAG, visible);
         updateTagButton(artTagButton, ART_TAG, visible);
         updateSaturationCombo(visible);
+        updateTemperatureSlider(visible);
         updateNextImageAfterTaggingCheckbox(visible);
         cropButton.setVisible(visible && file != null);
         cropButton.setEnabled(hasZoom);
@@ -795,13 +863,13 @@ public class ZoomableImagePanel extends JPanel {
         int y = MENU_MARGIN;
         previousButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 5,
+                y + (MENU_HEIGHT + MENU_GAP) * 6,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         nextButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
-                y + (MENU_HEIGHT + MENU_GAP) * 5,
+                y + (MENU_HEIGHT + MENU_GAP) * 6,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -848,21 +916,27 @@ public class ZoomableImagePanel extends JPanel {
                 OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
                 MENU_HEIGHT
         );
+        temperatureSlider.setBounds(
+                x,
+                y + (MENU_HEIGHT + MENU_GAP) * 5,
+                OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP,
+                MENU_HEIGHT
+        );
         cropButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 6,
+                y + (MENU_HEIGHT + MENU_GAP) * 7,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         deleteButton.setBounds(
                 x + OVERLAY_BUTTON_WIDTH + MENU_GAP,
-                y + (MENU_HEIGHT + MENU_GAP) * 6,
+                y + (MENU_HEIGHT + MENU_GAP) * 7,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
         closeButton.setBounds(
                 x,
-                y + (MENU_HEIGHT + MENU_GAP) * 7,
+                y + (MENU_HEIGHT + MENU_GAP) * 8,
                 OVERLAY_BUTTON_WIDTH,
                 MENU_HEIGHT
         );
@@ -878,7 +952,7 @@ public class ZoomableImagePanel extends JPanel {
 
     private Dimension getOverlayMenuSize() {
         int width = OVERLAY_BUTTON_WIDTH * 2 + MENU_GAP;
-        int height = MENU_HEIGHT * 8 + MENU_GAP * 7;
+        int height = MENU_HEIGHT * 9 + MENU_GAP * 8;
         return new Dimension(width, height);
     }
 
@@ -893,6 +967,7 @@ public class ZoomableImagePanel extends JPanel {
                 beautifullTagButton,
                 artTagButton,
                 saturationCombo,
+                temperatureSlider,
                 nextImageAfterTaggingCheckbox,
                 cropButton,
                 deleteButton,

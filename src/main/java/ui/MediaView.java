@@ -429,9 +429,10 @@ public class MediaView {
                                                   BufferedImage rotatedImage,
                                                   ImageZoomHandler.ZoomSelection zoomSelection) {
         SlideshowTransitionImage nextImage = new SlideshowTransitionImage(
-                ImageEnhancementUtils.adjustSaturation(
+                ImageEnhancementUtils.applyEnhancements(
                         rotatedImage,
-                        ImageSaturationHandler.getInstance().getLevelForFile(file)
+                        ImageSaturationHandler.getInstance().getLevelForFile(file),
+                        ImageTemperatureHandler.getInstance().getTemperatureForFile(file)
                 ),
                 zoomSelection
         );

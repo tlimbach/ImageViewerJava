@@ -8,6 +8,13 @@ public final class ImageEnhancementUtils {
     private ImageEnhancementUtils() {
     }
 
+    public static BufferedImage applyEnhancements(BufferedImage source,
+                                                  ImageSaturationHandler.SaturationLevel saturationLevel,
+                                                  int temperature) {
+        BufferedImage result = adjustSaturation(source, saturationLevel);
+        return adjustTemperature(result, temperature);
+    }
+
     public static BufferedImage adjustSaturation(BufferedImage source, ImageSaturationHandler.SaturationLevel level) {
         if (source == null || level == null || level == ImageSaturationHandler.SaturationLevel.NORMAL) {
             return source;
@@ -36,5 +43,42 @@ public final class ImageEnhancementUtils {
         }
 
         return result;
+    }
+
+    public static BufferedImage adjustTemperature(BufferedImage source, int temperature) {
+        if (source == null || temperature == ImageTemperatureHandler.NEUTRAL_TEMPERATURE) {
+            return source;
+        }
+
+        int clampedTemperature = Math.max(
+                ImageTemperatureHandler.MIN_TEMPERATURE,
+                Math.min(ImageTemperatureHandler.MAX_TEMPERATURE, temperature)
+        );
+        int type = source.getTransparency() == Transparency.OPAQUE
+                ? BufferedImage.TYPE_INT_RGB
+                : BufferedImage.TYPE_INT_ARGB;
+        BufferedImage result = new BufferedImage(source.getWidth(), source.getHeight(), type);
+
+        double redFactor = 1.0 + clampedTemperature * 0.045;
+        double greenFactor = 1.0 + clampedTemperature * 0.010;
+        double blueFactor = 1.0 - clampedTemperature * 0.060;
+
+        for (int y = 0; y < source.getHeight(); y++) {
+            for (int x = 0; x < source.getWidth(); x++) {
+                int argb = source.getRGB(x, y);
+                int alpha = (argb >>> 24) & 0xff;
+                int red = clampColor((int) Math.round(((argb >>> 16) & 0xff) * redFactor));
+                int green = clampColor((int) Math.round(((argb >>> 8) & 0xff) * greenFactor));
+                int blue = clampColor((int) Math.round((argb & 0xff) * blueFactor));
+
+                result.setRGB(x, y, (alpha << 24) | (red << 16) | (green << 8) | blue);
+            }
+        }
+
+        return result;
+    }
+
+    private static int clampColor(int value) {
+        return Math.max(0, Math.min(255, value));
     }
 }
