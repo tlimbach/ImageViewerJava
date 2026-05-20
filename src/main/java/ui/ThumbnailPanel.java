@@ -1406,12 +1406,41 @@ public class ThumbnailPanel extends JPanel {
     }
 
     private void showDuplicateMessage(String title, List<String> duplicates) {
-        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                this,
-                "Bereits vorhandene Bilder wurden nicht importiert:\n" + String.join("\n", duplicates),
-                title,
-                JOptionPane.INFORMATION_MESSAGE
-        ));
+        SwingUtilities.invokeLater(() -> {
+            Window owner = SwingUtilities.getWindowAncestor(this);
+            JDialog dialog = new JDialog(owner, title, Dialog.ModalityType.MODELESS);
+            dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+            JTextArea message = new JTextArea("Bereits vorhandene Bilder wurden nicht importiert:\n" + String.join("\n", duplicates));
+            message.setEditable(false);
+            message.setFocusable(false);
+            message.setOpaque(false);
+            message.setLineWrap(true);
+            message.setWrapStyleWord(true);
+            message.setColumns(48);
+
+            JPanel content = new JPanel(new BorderLayout(12, 0));
+            content.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+            content.add(new JLabel(UIManager.getIcon("OptionPane.informationIcon")), BorderLayout.WEST);
+            content.add(message, BorderLayout.CENTER);
+
+            dialog.setContentPane(content);
+            dialog.pack();
+            dialog.setLocationRelativeTo(this);
+            dialog.setVisible(true);
+
+            Thread closeThread = new Thread(() -> {
+                try {
+                    Thread.sleep(2000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    return;
+                }
+                SwingUtilities.invokeLater(dialog::dispose);
+            }, "duplicate-message-auto-close");
+            closeThread.setDaemon(true);
+            closeThread.start();
+        });
     }
 
     private String fileNameFromDownloadMetadata(URL url, String contentDisposition, String contentType) {

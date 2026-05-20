@@ -213,7 +213,8 @@ public class ImageViewer {
                 Path duplicate = DuplicateImageFinder.findExistingDuplicate(targetDirectory, source).orElse(null);
                 if (duplicate != null) {
                     duplicates.add(source.getFileName() + " ist bereits vorhanden als " + duplicate.getFileName());
-                    System.out.println("[DesktopInbox] Duplikat nicht importiert: " + source + " == " + duplicate);
+                    Files.delete(source);
+                    System.out.println("[DesktopInbox] Duplikat nicht importiert und vom Desktop geloescht: " + source + " == " + duplicate);
                     continue;
                 }
 
@@ -226,7 +227,7 @@ public class ImageViewer {
                 copied++;
                 System.out.println("[DesktopInbox] Desktop-Bild kopiert und vom Desktop geloescht: " + source + " -> " + target);
             } catch (IOException e) {
-                System.err.println("[DesktopInbox] Kopieren fehlgeschlagen fuer " + source + ": " + e.getMessage());
+                System.err.println("[DesktopInbox] Import fehlgeschlagen fuer " + source + ": " + e.getMessage());
             }
         }
 
@@ -243,12 +244,45 @@ public class ImageViewer {
     }
 
     private void showDesktopDuplicateMessage(List<String> duplicates) {
-        SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
-                null,
-                "Bereits vorhandene Bilder wurden nicht importiert:\n" + String.join("\n", duplicates),
+        SwingUtilities.invokeLater(() -> showAutoClosingMessage(
                 "Desktop-Import",
-                JOptionPane.INFORMATION_MESSAGE
+                "Bereits vorhandene Bilder wurden nicht importiert und vom Desktop geloescht:\n" + String.join("\n", duplicates)
         ));
+    }
+
+    private void showAutoClosingMessage(String title, String text) {
+        JDialog dialog = new JDialog((Window) null, title, Dialog.ModalityType.MODELESS);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+
+        JTextArea message = new JTextArea(text);
+        message.setEditable(false);
+        message.setFocusable(false);
+        message.setOpaque(false);
+        message.setLineWrap(true);
+        message.setWrapStyleWord(true);
+        message.setColumns(48);
+
+        JPanel content = new JPanel(new BorderLayout(12, 0));
+        content.setBorder(BorderFactory.createEmptyBorder(14, 16, 14, 16));
+        content.add(new JLabel(UIManager.getIcon("OptionPane.informationIcon")), BorderLayout.WEST);
+        content.add(message, BorderLayout.CENTER);
+
+        dialog.setContentPane(content);
+        dialog.pack();
+        dialog.setLocationRelativeTo(null);
+        dialog.setVisible(true);
+
+        Thread closeThread = new Thread(() -> {
+            try {
+                Thread.sleep(2000);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            SwingUtilities.invokeLater(dialog::dispose);
+        }, "desktop-duplicate-message-auto-close");
+        closeThread.setDaemon(true);
+        closeThread.start();
     }
 
     private List<Path> findDesktopDirectories() {
